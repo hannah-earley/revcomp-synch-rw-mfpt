@@ -1,14 +1,40 @@
 #include <iostream>
 #include <random>
 #include <vector>
+#include <cmath>
 #include "pcg/pcg_random.hpp"
 
-// template <
-//     typename Walker,
-//     std::size_t N
-// > struct MFPT {
-//     std::array<Walker, N> ensemble;
-// };
+void stats(std::vector<double> xs) {
+    double mean_ = 0, var_ = 0, err_;
+    size_t n = 0;
+
+    for (double x : xs) {
+        mean_ += x;
+        var_ += x*x;
+        n++;
+    }
+
+    mean_ /= n;
+    var_ = var_ - n * mean_ * mean_;
+    var_ /= n - 1;
+    err_ = var_ / n;
+
+    var_ = std::sqrt(var_);
+    err_ = std::sqrt(err_);
+
+    std::cout << "mean:" << mean_;
+    std::cout << " var:" << var_;
+    std::cout << " err:" << err_ << "\n";
+}
+
+void drift_stats(std::vector<double> xs) {
+    size_t n = xs.size();
+    std::vector<double> ys(n-1, 0);
+    for (size_t i = 0; i < n-1; i++)
+        ys[i] = xs[i+1] - xs[i];
+    std::cout << "drift.. ";
+    stats(ys);
+}
 
 template <typename S>
 void mfpt1d(double bias, S init, size_t n) {
@@ -18,78 +44,32 @@ void mfpt1d(double bias, S init, size_t n) {
     pcg32 rng(seed_source);
 
     std::bernoulli_distribution fwd(0.5 * (1 + bias));
-
     std::vector<S> ensemble(n, init);
-    size_t burnin = 0, burnt = 0;
 
-    while (burnt++, burnin < n) {
-        for (S& w : ensemble) {
-            w += fwd(rng) ? 1 : -1;
-            if (w == term) {
-                w = init;
-                // std::cout << "!";
-                burnin++;
+    size_t sample_window = 10000;
+    size_t ensemble_count = 10000;
+
+    std::vector<double> mfpts(ensemble_count, 0);
+    while (1) {
+        for (double& mfpt : mfpts) {
+            mfpt = 0;
+            size_t r = 0;
+            for (size_t t = 0; t < sample_window; t++) {
+                for (S& w : ensemble) {
+                    w += fwd(rng) ? 1 : -1;
+                    if (w == term) {
+                        w = init;
+                        r++;
+                    }
+                }
             }
-            // std::cout << w << ",";
+            mfpt = (double)sample_window * (double)n / double(r);
         }
-        // std::cout << "\n";
+        stats(mfpts);
+        drift_stats(mfpts);
     }
-    std::cout << "BURNIN THRESHOLD\n";
-    burnt*=100000;
-    while (burnt--) {
-        for (S& w : ensemble) {
-            w += fwd(rng) ? 1 : -1;
-            if (w == term) {
-                w = init;
-                // std::cout << "!";
-            }
-            // std::cout << w << ",";
-        }
-        // std::cout << "\n";
-    }
-    std::cout << "BURNIN COMPLETE\n";
-
-    size_t t = 0, r = 0, t_max = 10000;
-    while (++t) { // while (t++ < t_max) {
-        for (S& w : ensemble) {
-            w += fwd(rng) ? 1 : -1;
-            if (w == term) {
-                w = init;
-                r++;
-            }
-        }
-
-        if (t % 10000 == 0) {
-            double j = (double)r / (double)n / (double)t;
-            std::cout << t << " " << r << " : " << j << " " << (1/j) << "\n";
-        }
-    }
-
-    /* TODO:
-
-        - appropriate burn in time is perhaps hard to predict, and possibly far exceeds the time for most walkers to have completed a cycle
-
-        - also, we would like to ascribe some sort of stdev or error to our results; to do so, we want to have a notion of samples of the mfpt estimate
-
-        - we can achieve both of these goals by windowing over the current (j) calculation;
-
-            - have an ensemble of walker ensembles
-            - run the ensemble^2 for the window time, each walker ensemble then gives an mfpt estimate
-            - combine the ensemble^2 mfpt estimate to get an error bound/stdev
-            - by only computing j within the window, we will continue to burn in over time
-            - can estimate burn in by comparing current estimate to previous estimate(s)
-            - may also want to do some sort of adaptive window size...
-
-    */
 }
 
 int main(int argc, char *argv[]) {
-    std::cout << "Hello, world!\n";
-
-    pcg_extras::seed_seq_from<std::random_device> seed_source;
-    pcg32 rng(seed_source);
-
-    std::cout << rng() << "\n";
-
     mfpt1d<int>(0.001, -5, 1000);
 }
