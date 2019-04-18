@@ -4,63 +4,49 @@
 #include <cmath>
 #include "pcg/pcg_random.hpp"
 
-void stats(std::vector<double> xs) {
-    double mean_ = 0, var_ = 0, err_;
-    size_t n = 0;
+struct Stats {
+    size_t n;
+    double mean;
+    double variance;
+    double error;
 
-    for (double x : xs) {
-        mean_ += x;
-        var_ += x*x;
-        n++;
+    Stats(size_t n, double m, double v, double e)
+        : n(n), mean(m), variance(v), error(e)
+    {};
+
+    Stats(std::vector<double> xs)
+        : n(xs.size()), mean(0), variance(0), error(0)
+    {
+        for (double x : xs) {
+            mean += x;
+            variance += x*x;
+        }
+
+        mean /= n;
+        variance -= n * mean * mean;
+        variance /= n - 1;
+        error = variance / n;
+
+        variance = std::sqrt(variance);
+        error = std::sqrt(error);
     }
 
-    mean_ /= n;
-    var_ = var_ - n * mean_ * mean_;
-    var_ /= n - 1;
-    err_ = var_ / n;
-
-    var_ = std::sqrt(var_);
-    err_ = std::sqrt(err_);
-
-    std::cout << "mean:" << mean_;
-    std::cout << " var:" << var_;
-    std::cout << " err:" << err_ << "\n";
-}
-
-void stats_recip(std::vector<double> xs) {
-    double mean_ = 0, var_ = 0, err_;
-    size_t n = 0;
-
-    for (double x : xs) {
-        mean_ += x;
-        var_ += x*x;
-        n++;
+    Stats pow(double exp) {
+        double m, v, e;
+        m = std::pow(mean, exp);
+        e = std::abs(exp) * m * error / mean;
+        v = e * std::sqrt((double)n);
+        return Stats(n, m, v, e);
     }
 
-    mean_ /= n;
-    var_ = var_ - n * mean_ * mean_;
-    var_ /= n - 1;
-    err_ = var_ / n;
+    friend std::ostream& operator<< (std::ostream &os, const Stats &stats);
+};
 
-    var_ = std::sqrt(var_);
-    err_ = std::sqrt(err_);
-
-    mean_ = 1 / mean_;
-    err_ *= mean_ * mean_;
-    var_ = err_ * std::sqrt((double)n);
-
-    std::cout << "mean:" << mean_;
-    std::cout << " var:" << var_;
-    std::cout << " err:" << err_ << "\n";
-}
-
-void drift_stats(std::vector<double> xs) {
-    size_t n = xs.size();
-    std::vector<double> ys(n-1, 0);
-    for (size_t i = 0; i < n-1; i++)
-        ys[i] = xs[i+1] - xs[i];
-    std::cout << "drift.. ";
-    stats(ys);
+std::ostream& operator<<(std::ostream& os, const Stats &stats) {
+    return os << "mean:" << stats.mean
+              << " var:" << stats.variance
+              << " err:" << stats.error
+              << std::endl;
 }
 
 template <typename S>
@@ -92,7 +78,7 @@ void mfpt1d(double bias, S init, size_t n) {
             }
             j = (double)r / (double)n / (double)sample_window;
         }
-        stats_recip(js);
+        std::cout << Stats(js).pow(-1);
     }
 }
 
