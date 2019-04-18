@@ -3,7 +3,7 @@ CXXFLAGS=-std=c++11 -O3 -Iinc/
 OBDIR=obj
 
 DEPS=
-_OBJ=walk.o
+_OBJ=walk.o misc.o
 OBJ=$(patsubst %,$(OBDIR)/%,$(_OBJ))
 
 all: walk
