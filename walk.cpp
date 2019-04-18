@@ -27,6 +27,33 @@ void stats(std::vector<double> xs) {
     std::cout << " err:" << err_ << "\n";
 }
 
+void stats_recip(std::vector<double> xs) {
+    double mean_ = 0, var_ = 0, err_;
+    size_t n = 0;
+
+    for (double x : xs) {
+        mean_ += x;
+        var_ += x*x;
+        n++;
+    }
+
+    mean_ /= n;
+    var_ = var_ - n * mean_ * mean_;
+    var_ /= n - 1;
+    err_ = var_ / n;
+
+    var_ = std::sqrt(var_);
+    err_ = std::sqrt(err_);
+
+    mean_ = 1 / mean_;
+    err_ *= mean_ * mean_;
+    var_ = err_ * std::sqrt((double)n);
+
+    std::cout << "mean:" << mean_;
+    std::cout << " var:" << var_;
+    std::cout << " err:" << err_ << "\n";
+}
+
 void drift_stats(std::vector<double> xs) {
     size_t n = xs.size();
     std::vector<double> ys(n-1, 0);
@@ -49,10 +76,10 @@ void mfpt1d(double bias, S init, size_t n) {
     size_t sample_window = 10000;
     size_t ensemble_count = 10000;
 
-    std::vector<double> mfpts(ensemble_count, 0);
+    std::vector<double> js(ensemble_count, 0);
     while (1) {
-        for (double& mfpt : mfpts) {
-            mfpt = 0;
+        for (double& j : js) {
+            j = 0;
             size_t r = 0;
             for (size_t t = 0; t < sample_window; t++) {
                 for (S& w : ensemble) {
@@ -63,10 +90,9 @@ void mfpt1d(double bias, S init, size_t n) {
                     }
                 }
             }
-            mfpt = (double)sample_window * (double)n / double(r);
+            j = (double)r / (double)n / (double)sample_window;
         }
-        stats(mfpts);
-        drift_stats(mfpts);
+        stats_recip(js);
     }
 }
 
