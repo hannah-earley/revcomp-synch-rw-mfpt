@@ -1,0 +1,1 @@
+double LambertW0(double x, const double acc=1e-15);
