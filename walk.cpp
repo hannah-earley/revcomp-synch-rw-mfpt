@@ -7,36 +7,36 @@
 struct Stats {
     size_t n;
     double mean;
-    double variance;
     double error;
 
-    Stats(size_t n, double m, double v, double e)
-        : n(n), mean(m), variance(v), error(e)
+    Stats(size_t n, double m, double e)
+        : n(n), mean(m), error(e)
     {};
 
     Stats(std::vector<double> xs)
-        : n(xs.size()), mean(0), variance(0), error(0)
+        : n(xs.size()), mean(0), error(0)
     {
         for (double x : xs) {
             mean += x;
-            variance += x*x;
+            error += x*x;
         }
 
         mean /= n;
-        variance -= n * mean * mean;
-        variance /= n - 1;
-        error = variance / n;
-
-        variance = std::sqrt(variance);
+        error /= n;
+        error -= mean * mean;
+        error /= n - 1;
         error = std::sqrt(error);
     }
 
-    Stats pow(double exp) {
+    Stats pow(double exp) const {
         double m, v, e;
         m = std::pow(mean, exp);
         e = std::abs(exp) * m * error / mean;
-        v = e * std::sqrt((double)n);
-        return Stats(n, m, v, e);
+        return Stats(n, m, e);
+    }
+
+    double variance() const {
+        return error * std::sqrt((double)n);
     }
 
     friend std::ostream& operator<< (std::ostream &os, const Stats &stats);
@@ -44,7 +44,7 @@ struct Stats {
 
 std::ostream& operator<<(std::ostream& os, const Stats &stats) {
     return os << "mean:" << stats.mean
-              << " var:" << stats.variance
+              << " var:" << stats.variance()
               << " err:" << stats.error
               << std::endl;
 }
