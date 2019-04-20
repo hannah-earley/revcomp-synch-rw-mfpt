@@ -1,5 +1,6 @@
 CXX=clang++
-CXXFLAGS=-std=c++11 -O3 -Iinc/
+CXXFLAGS=-Xclang -fopenmp -std=c++11 -O3 -Iinc/
+LINKFLAGS=-lomp
 OBDIR=obj
 
 DEPS=
@@ -9,7 +10,7 @@ OBJ=$(patsubst %,$(OBDIR)/%,$(_OBJ))
 all: walk
 
 walk: $(OBJ)
-	$(CXX) $(CXXFLAGS) -o $@ $^
+	$(CXX) $(CXXFLAGS) $(LINKFLAGS) -o $@ $^
 
 $(OBDIR)/%.o: %.cpp $(DEPS)
 	mkdir -p $(OBDIR)
