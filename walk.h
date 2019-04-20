@@ -12,7 +12,7 @@ struct SimTimer {
         start_wall = std::chrono::high_resolution_clock::now();
     }
 
-    void report(size_t its=1) {
+    void report(double its=1) {
         std::clock_t end_cpu = std::clock();
         std::chrono::high_resolution_clock::time_point end_wall
             = std::chrono::high_resolution_clock::now();
@@ -21,7 +21,7 @@ struct SimTimer {
         std::chrono::duration<double> diff_wall = end_wall - start_wall;
         double t_wall = diff_wall.count();
 
-        std::cout << "CPU:  " << (1e9 * t_cpu  / its) << " ns\n";
-        std::cout << "Wall: " << (1e9 * t_wall / its) << " ns\n";
+        std::cerr << "CPU:  " << (1e9 * t_cpu  / its) << " ns\n";
+        std::cerr << "Wall: " << (1e9 * t_wall / its) << " ns\n";
     }
 };

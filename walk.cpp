@@ -1,3 +1,4 @@
+#include <fstream>
 #include <iostream>
 #include <random>
 #include <vector>
@@ -7,6 +8,11 @@
 #include <cstdlib>
 #include <unistd.h>
 #include <omp.h>
+#include <exception>
+#include <cctype>
+#include <cstring>
+#include <string>
+#include <signal.h>
 #include "pcg/pcg_random.hpp"
 #include "walk.h"
 
@@ -110,6 +116,82 @@ Stats ensemble_walk(std::vector<S>& walkers,
     return Stats(js).pow(-1);
 }
 
+//// walk miscellanea
+
+struct WalkConfig {
+    size_t n;
+    std::string pv_filename;
+    size_t sample_window;
+    size_t ensemble_count;
+    std::string cmd;
+
+    double iterations() {
+        return (double)n * (double)sample_window * (double)ensemble_count;
+    }
+};
+
+//// persistence
+
+template<typename S>
+struct PersistentVector {
+    WalkConfig wc;
+
+    PersistentVector(WalkConfig wc) : wc(wc) {}
+
+    void maybe_load(std::vector<S>& vec) {
+        if (wc.pv_filename.empty())
+            return;
+        std::fstream fs;
+        std::string line;
+        fs.open(wc.pv_filename, std::ios_base::in);
+        if (!fs.is_open() || fs.eof())
+            return;
+
+        vec.clear();
+        while (std::getline(fs, line)) {
+            if (line[0] == '#')
+                continue;
+            vec.push_back(read1(line));
+        }
+    }
+
+    void store(const std::vector<S>& vec) {
+        // prevent interrupts during storage
+        struct sigaction new_act, old_act;
+        new_act.sa_handler = SIG_IGN;
+        sigemptyset(&new_act.sa_mask);
+        new_act.sa_flags = 0;
+        sigaction(SIGINT, &new_act, &old_act);
+        // interrupts...
+
+        if (wc.pv_filename.empty())
+            return;
+        std::fstream fs;
+        fs.open(wc.pv_filename, std::ios_base::out|std::ios_base::trunc);
+
+        fs << "# " << wc.cmd << std::endl;
+        for (const S& x : vec)
+            write1(fs, x);
+
+        // uninstall interrupt handler
+        sigaction(SIGINT, &old_act, NULL);
+        // interrupts...
+    }
+
+    static S read1(std::string);
+    static std::ostream& write1(std::ostream&, const S&);
+
+};
+
+template<>
+int PersistentVector<int>::read1(std::string s) {
+    return std::stoi(s);
+}
+template<>
+std::ostream& PersistentVector<int>::write1(std::ostream& os, const int& n) {
+    return os << n << std::endl;
+}
+
 //// 1d walk
 
 template<typename S>
@@ -121,21 +203,21 @@ void mfpt1d_seed(double bias, std::vector<S>& ensemble) {
 }
 
 template <typename S>
-void mfpt1d(double bias, S init, size_t n) {
+void mfpt1d(double bias, S init, WalkConfig wc) {
     S term = 0;
     double p = 0.5 * (1 + bias);
     std::bernoulli_distribution fwd(p);
 
-    std::vector<S> ensemble(n, init);
+    std::vector<S> ensemble(wc.n, init);
     if (bias > 0) mfpt1d_seed(bias, ensemble);
-
-    size_t sample_window = 10000;
-    size_t ensemble_count = 10000;
     std::vector<pcg32> rngs;
+
+    PersistentVector<S> pv(wc);
+    pv.maybe_load(ensemble);
 
     while (1) {
         SimTimer bench;
-        std::cout << ensemble_walk(ensemble, ensemble_count, sample_window, rngs,
+        std::cout << ensemble_walk(ensemble, wc.ensemble_count, wc.sample_window, rngs,
         [&](S& w, pcg32& rng, size_t& r) {
             w += fwd(rng) ? 1 : -1;
             if (w >= term) {
@@ -143,7 +225,8 @@ void mfpt1d(double bias, S init, size_t n) {
                 r++;
             }
         });
-        VERBOSE bench.report(n * sample_window * ensemble_count);
+        VERBOSE bench.report(wc.iterations());
+        pv.store(ensemble);
     }
 }
 
@@ -189,7 +272,7 @@ struct Coord2D {
         // move within a pre-constriction quadrant...
         if (false) // below condition should never happen...
             if (y < 0 || y > -x) {
-                std::cout << "!" << *this << "!";
+                std::cerr << "!" << *this << "!";
                 if (y < 0) y = 0;
                 if (y > -x) y = -x;
             }
@@ -208,6 +291,20 @@ struct Coord2D {
 };
 std::ostream& operator<< (std::ostream &os, const Coord2D &coord) {
     return os << "(" << coord.x << ", " << coord.y << ")";
+}
+template<>
+Coord2D PersistentVector<Coord2D>::read1(std::string s) {
+    auto n = s.find(',');
+    if (n == std::string::npos)
+        throw std::invalid_argument("Corrupt persistent state... (invalid Coord2D)");
+
+    int x = std::stoi(s);
+    int y = std::stoi(s.substr(n));
+    return Coord2D(x, y);
+}
+template<>
+std::ostream& PersistentVector<Coord2D>::write1(std::ostream& os, const Coord2D& coord) {
+    return os << coord.x << "," << coord.y << std::endl;
 }
 
 void quad_step_test() {
@@ -244,7 +341,7 @@ void mfpt2d_seed(double bias, int width, std::vector<Coord2D>& ensemble) {
     }
 }
 
-void mfpt2d(double bias, uint init, uint width, size_t n) {
+void mfpt2d(double bias, uint init, uint width, WalkConfig wc) {
     init = 1 - init - width;
     int term = 1 - width;
     std::uniform_int_distribution<int> init_dist(0,-init);
@@ -252,16 +349,16 @@ void mfpt2d(double bias, uint init, uint width, size_t n) {
     double p = 0.5 * (1 + bias);
     QuadWalkStepDistr32 step(p);
 
-    std::vector<Coord2D> ensemble(n, Coord2D(init,0));
+    std::vector<Coord2D> ensemble(wc.n, Coord2D(init,0));
     if (bias > 0) mfpt2d_seed(bias, width, ensemble);
-
-    size_t sample_window = 1000;
-    size_t ensemble_count = 1000;
     std::vector<pcg32> rngs;
+
+    PersistentVector<Coord2D> pv(wc);
+    pv.maybe_load(ensemble);
 
     while (1) {
         SimTimer bench;
-        std::cout << ensemble_walk(ensemble, ensemble_count, sample_window, rngs,
+        std::cout << ensemble_walk(ensemble, wc.ensemble_count, wc.sample_window, rngs,
         [&](Coord2D& w, pcg32& rng, size_t& r) {
             w.move_ql(step(rng));
             if (w.x >= term) {
@@ -270,7 +367,8 @@ void mfpt2d(double bias, uint init, uint width, size_t n) {
                 r++;
             }
         });
-        VERBOSE bench.report(n * sample_window * ensemble_count);
+        VERBOSE bench.report(wc.iterations());
+        pv.store(ensemble);
     }
 }
 
@@ -290,7 +388,10 @@ void help(int argc, char *argv[]) {
     char *progn = progn_def;
     if (argc > 0) progn = argv[0];
 
-    fprintf(stderr, "Usage: %s [-1|-2|-t] [-v] [-b bias] [-d distance] [-w width] [-n count]\n", progn);
+    fprintf(stderr, "Usage: %s\n", progn);
+    fprintf(stderr, "         [-1|-2|-t] [-v] [-b bias] [-d distance]\n");
+    fprintf(stderr, "         [-w width] [-n count] [-p filename]\n");
+    fprintf(stderr, "         [-m count] [-s window] [-x count]\n");
     fprintf(stderr, "    -1           Compute 1D walk MFPT\n");
     fprintf(stderr, "    -2           Compute 2D walk MFPT\n");
     fprintf(stderr, "    -t           Perform unit tests\n");
@@ -299,6 +400,33 @@ void help(int argc, char *argv[]) {
     fprintf(stderr, "    -d distance  Starting point, [nat]\n");
     fprintf(stderr, "    -w width     Constriction width (2D only), [nat]\n");
     fprintf(stderr, "    -n count     Number of walkers in ensemble, [nat]\n");
+    fprintf(stderr, "    -p filename  Persistence file\n");
+    fprintf(stderr, "    -m count     Number of measurements, [nat]\n");
+    fprintf(stderr, "    -s window    Sample time window, [nat]\n");
+    fprintf(stderr, "    -x count     Sets both m and s, [nat]\n");
+}
+
+std::string args2cmd(int argc, char *argv[]) {
+    // roughly reconstruct the original command line
+    // good for a simple diagnostic header for persistence files
+    std::string cmd;
+    for (int i = 0; i < argc; i++) {
+        char *arg = argv[i];
+
+        bool quote = strchr(argv[i], ' ') != NULL;
+        if (quote) cmd.push_back('"');
+
+        for (char *arg = argv[i]; *arg != '\0'; arg++) {
+            if (*arg == '\\' || *arg == '"')
+                cmd.push_back('\\');
+            cmd.push_back(std::isprint(*arg) ? *arg : '?');
+        }
+
+        if (quote) cmd.push_back('"');
+        if (i < argc - 1)
+            cmd.push_back(' ');
+    }
+    return cmd;
 }
 
 int unit_tests() {
@@ -313,11 +441,17 @@ int main(int argc, char *argv[]) {
     double bias = 0;
     uint width = 1;
     uint dist = 1;
-    size_t n = 1000;
     Simulation sim = UNITEST;
+    WalkConfig wc = {
+        .n = 1000,
+        .pv_filename = "",
+        .sample_window = 1000,
+        .ensemble_count = 1000,
+        .cmd = args2cmd(argc, argv)
+    };
 
     int c;
-    while ((c = getopt(argc, argv, "12tvb:w:n:d:")) != -1) switch(c) {
+    while ((c = getopt(argc, argv, "12tvb:w:n:d:p:m:s:x:")) != -1) switch(c) {
         case '1':
             sim = WALK_1D;
             break;
@@ -340,7 +474,7 @@ int main(int argc, char *argv[]) {
             width = stou(optarg);
             break;
         case 'n':
-            n = std::stoul(optarg);
+            wc.n = std::stoul(optarg);
             break;
         case 'd':
             dist = stou(optarg);
@@ -349,29 +483,46 @@ int main(int argc, char *argv[]) {
                 goto help;
             }
             break;
+        case 'p':
+            wc.pv_filename = optarg;
+            break;
+        case 'm':
+            wc.ensemble_count = std::stoul(optarg);
+            break;
+        case 's':
+            wc.sample_window = std::stoul(optarg);
+            break;
+        case 'x':
+            wc.ensemble_count = std::stoul(optarg);
+            wc.sample_window = std::stoul(optarg);
+            break;
         case 'h':
         case '?':
         default:
             goto help;
     }
 
-    std::cout << "Running simulation: " << sim << std::endl;
-    std::cout << "  Bias:               " << bias << std::endl;
-    std::cout << "  Distance:           " << dist << std::endl;
-  if (sim == WALK_2D)
-    std::cout << "  Constriction Width: " << width << std::endl;
-    std::cout << "  Ensemble Count:     " << n << std::endl;
-  VERBOSE
-    std::cout << "Verbose output..." << std::endl;
-    std::cout << std::endl;
+    VERBOSE {
+        std::cerr << "Running simulation: " << sim << std::endl;
+        std::cerr << "  Bias:               " << bias << std::endl;
+        std::cerr << "  Distance:           " << dist << std::endl;
+    if (sim == WALK_2D)
+        std::cerr << "  Constriction Width: " << width << std::endl;
+        std::cerr << "  Walker Count:       " << wc.n << std::endl;
+        std::cerr << "  Measurement Count:  " << wc.ensemble_count << std::endl;
+        std::cerr << "  Sample Window:      " << wc.sample_window << std::endl;
+    if (!wc.pv_filename.empty())
+        std::cerr << "  Persisting to:      " << wc.pv_filename << std::endl;
+        std::cerr << std::endl;
+    }
 
     switch (sim) {
         case WALK_1D:
-            mfpt1d<int>(bias, -(int)dist, n);
+            mfpt1d<int>(bias, -(int)dist, wc);
             break;
 
         case WALK_2D:
-            mfpt2d(bias, dist, width, n);
+            mfpt2d(bias, dist, width, wc);
             break;
 
         case UNITEST:
