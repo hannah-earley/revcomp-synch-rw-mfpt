@@ -377,13 +377,11 @@ void help(int argc, char *argv[]) {
     char *progn = progn_def;
     if (argc > 0) progn = argv[0];
 
-    fprintf(stderr, "Usage: %s\n", progn);
-    fprintf(stderr, "         [-1|-2|-t] [-v] [-b bias] [-d distance]\n");
-    fprintf(stderr, "         [-w width] [-n count] [-p filename]\n");
-    fprintf(stderr, "         [-m count] [-s window] [-x count]\n");
+    fprintf(stderr, "Usage: %s [options]\n", progn);
     fprintf(stderr, "    -1           Compute 1D walk MFPT\n");
     fprintf(stderr, "    -2           Compute 2D walk MFPT\n");
     fprintf(stderr, "    -t           Perform unit tests\n");
+    fprintf(stderr, "    -h           Print this help message\n");
     fprintf(stderr, "    -v           Verbose/debug mode\n");
     fprintf(stderr, "    -b bias      Biased walk, bias \\in [-1,1]\n");
     fprintf(stderr, "    -d distance  Starting point, [nat]\n");
@@ -440,7 +438,7 @@ int main(int argc, char *argv[]) {
     };
 
     int c;
-    while ((c = getopt(argc, argv, "12tvb:w:n:d:p:m:s:x:")) != -1) switch(c) {
+    while ((c = getopt(argc, argv, "12tvh?b:w:n:d:p:m:s:x:")) != -1) switch(c) {
         case '1':
             sim = WALK_1D;
             break;
