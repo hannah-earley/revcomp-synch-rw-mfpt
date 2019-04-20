@@ -1,5 +1,5 @@
 CXX=clang++
-CXXFLAGS=-Xclang -fopenmp -std=c++11 -O3 -Iinc/
+CXXFLAGS=-Xclang -fopenmp -std=c++11 -O3 -Wall -Iinc/
 LINKFLAGS=-lomp
 OBDIR=obj
 
@@ -20,8 +20,8 @@ run: walk
 	./walk
 
 clean:
-	rm -f $(OBDIR)/*.o
-	rmdir $(OBDIR)
+	-rm -f $(OBDIR)/*.o
+	-rmdir $(OBDIR)
 
 
 .PHONY: all run clean
