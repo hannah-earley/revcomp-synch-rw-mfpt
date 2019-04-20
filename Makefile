@@ -3,7 +3,7 @@ CXXFLAGS=-Xclang -fopenmp -std=c++11 -O3 -Iinc/
 LINKFLAGS=-lomp
 OBDIR=obj
 
-DEPS=
+DEPS=walk.h
 _OBJ=walk.o misc.o
 OBJ=$(patsubst %,$(OBDIR)/%,$(_OBJ))
 

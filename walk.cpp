@@ -7,14 +7,13 @@
 #include <cstdlib>
 #include <unistd.h>
 #include <omp.h>
-#include <atomic>
 #include "pcg/pcg_random.hpp"
 #include "walk.h"
 
 bool VERBOSE_MODE = false;
 #define VERBOSE if (VERBOSE_MODE)
 
-////
+//// statistical analysis
 
 struct Stats {
     size_t n;
@@ -61,72 +60,90 @@ std::ostream& operator<<(std::ostream& os, const Stats &stats) {
               << std::endl;
 }
 
-////
+//// parallel walking routine
+
+pcg32 fresh_rng() {
+    pcg_extras::seed_seq_from<std::random_device> seed_source;
+    return pcg32(seed_source);
+}
+
+template <typename S, typename F>
+Stats ensemble_walk(std::vector<S>& walkers,
+                    size_t ensemble_count,
+                    size_t sample_window,
+                    std::vector<pcg32>& rngs,
+                    F step_fn)
+{
+    size_t n = walkers.size();
+    std::vector<size_t> rs(ensemble_count, 0);
+    std::vector<double> js(ensemble_count, 0);
+
+    #pragma omp parallel
+    {
+        // get a fresh rng for each thread
+        #pragma omp master
+        {
+            size_t thread_count = omp_get_num_threads();
+            while (rngs.size() < thread_count)
+                rngs.push_back(fresh_rng());
+        }
+        #pragma omp barrier
+        pcg32& rng = rngs[omp_get_thread_num()];
+
+        // do the actual ensemble of walks
+        #pragma omp for
+        for (size_t i = 0; i < n; i++) {
+            for (size_t j = 0; j < ensemble_count; j++) {
+                size_t r = 0;
+                for (size_t t = 0; t < sample_window; t++)
+                    step_fn(walkers[i], rng, r);
+                #pragma omp atomic
+                rs[j] += r;
+            }
+        } 
+    }
+
+    // statistical summary
+    for (size_t i = 0; i < ensemble_count; i++)
+        js[i] = (double)rs[i] / (double)n / (double) sample_window;
+    return Stats(js).pow(-1);
+}
+
+//// 1d walk
 
 template <typename S>
 void mfpt1d(double bias, S init, size_t n) {
-    pcg_extras::seed_seq_from<std::random_device> seed_source;
-    pcg32 rng(seed_source);
-
     S term = 0;
     double p = 0.5 * (1 + bias);
-    double q = 0.5 * (1 - bias);
     std::bernoulli_distribution fwd(p);
 
     std::vector<S> ensemble(n, init);
     if (bias > 0) {
+        pcg32 rng = fresh_rng();
         std::geometric_distribution<S> seed_distr(bias/p);
         for (S& w : ensemble)
             w = -seed_distr(rng);
     }
 
-    size_t sample_window = 1000;
-    size_t ensemble_count = 1000;
-    std::vector<size_t> rs(ensemble_count, 0);
-    std::vector<double> js(ensemble_count, 0);
+    size_t sample_window = 10000;
+    size_t ensemble_count = 10000;
+    std::vector<pcg32> rngs;
 
     while (1) {
-        auto c_start = std::clock();
-        auto start = std::chrono::high_resolution_clock::now();
-
-        for (auto &r : rs) r = 0;
-
-        #pragma omp parallel for
-        for (size_t i = 0; i < n; i++) {
-            S& w = ensemble[i];
-            for (size_t j = 0; j < ensemble_count; j++) {
-                size_t r = 0;
-                for (size_t t = 0; t < sample_window; t++) {
-                    w += fwd(rng) ? 1 : -1;
-                    if (w >= term) {
-                        w = init;
-                        r++;
-                    }
-                }
-                #pragma omp atomic
-                rs[j] += r;
+        SimTimer bench;
+        std::cout << ensemble_walk(ensemble, ensemble_count, sample_window, rngs,
+        [&](S& w, pcg32& rng, size_t& r) {
+            w += fwd(rng) ? 1 : -1;
+            if (w >= term) {
+                w = init;
+                r++;
             }
-        }
-
-        for (size_t i = 0; i < ensemble_count; i++)
-            js[i] = (double)rs[i] / (double)n / (double) sample_window;
-
-        VERBOSE {
-            auto c_end = std::clock();
-            auto end = std::chrono::high_resolution_clock::now();
-            auto t = (1.0 * (c_end - c_start)) / CLOCKS_PER_SEC;
-            std::chrono::duration<double> diff = end-start;
-            double t2 = diff.count();
-            double its = n * sample_window * ensemble_count;
-            std::cout << "CPU:  " << (1e9 * t / its) << " ns\n";
-            std::cout << "Wall: " << (1e9 * t2 / its) << " ns\n";
-        }
-
-        std::cout << Stats(js).pow(-1);
+        });
+        VERBOSE bench.report(n * sample_window * ensemble_count);
     }
 }
 
-////
+//// 2d walk helpers
 
 struct QuadWalkStepDistr32 {
     struct Step {
@@ -206,9 +223,10 @@ void quad_step_test() {
     }
 }
 
-////
+//// 2d walk
 
-void mfpt2d_seed(double bias, int width, pcg32& rng, std::vector<Coord2D>& ensemble) {
+void mfpt2d_seed(double bias, int width, std::vector<Coord2D>& ensemble) {
+    pcg32 rng = fresh_rng();
     std::uniform_real_distribution<double> unit_int(0,1);
     for (Coord2D& w : ensemble) {
         double x = unit_int(rng);
@@ -222,68 +240,36 @@ void mfpt2d_seed(double bias, int width, pcg32& rng, std::vector<Coord2D>& ensem
 }
 
 void mfpt2d(double bias, uint init, uint width, size_t n) {
-    pcg_extras::seed_seq_from<std::random_device> seed_source;
-    pcg32 rng(seed_source);
-
     init = 1 - init - width;
     int term = 1 - width;
     std::uniform_int_distribution<int> init_dist(0,-init);
 
     double p = 0.5 * (1 + bias);
-    double q = 0.5 * (1 - bias);
     QuadWalkStepDistr32 step(p);
 
     std::vector<Coord2D> ensemble(n, Coord2D(init,0));
-    if (bias > 0) mfpt2d_seed(bias, width, rng, ensemble);
+    if (bias > 0) mfpt2d_seed(bias, width, ensemble);
 
     size_t sample_window = 1000;
     size_t ensemble_count = 1000;
-    std::vector<size_t> rs(ensemble_count, 0);
-    std::vector<double> js(ensemble_count, 0);
+    std::vector<pcg32> rngs;
 
     while (1) {
-        auto c_start = std::clock();
-        auto start = std::chrono::high_resolution_clock::now();
-
-        for (auto &r : rs) r = 0;
-
-        #pragma omp parallel for
-        for (size_t i = 0; i < n; i++) {
-            Coord2D& w = ensemble[i];
-            for (size_t j = 0; j < ensemble_count; j++) {
-                size_t r = 0;
-                for (size_t t = 0; t < sample_window; t++) {
-                    w.move_ql(step(rng));
-                    if (w.x >= term) {
-                        w.x = init;
-                        w.y = init_dist(rng);
-                        r++;
-                    }
-                }
-                #pragma omp atomic
-                rs[j] += r;
+        SimTimer bench;
+        std::cout << ensemble_walk(ensemble, ensemble_count, sample_window, rngs,
+        [&](Coord2D& w, pcg32& rng, size_t& r) {
+            w.move_ql(step(rng));
+            if (w.x >= term) {
+                w.x = init;
+                w.y = init_dist(rng);
+                r++;
             }
-        }
-
-        for (size_t i = 0; i < ensemble_count; i++)
-            js[i] = (double)rs[i] / (double)n / (double) sample_window;
-
-        VERBOSE {
-            auto c_end = std::clock();
-            auto end = std::chrono::high_resolution_clock::now();
-            auto t = (1.0 * (c_end - c_start)) / CLOCKS_PER_SEC;
-            std::chrono::duration<double> diff = end-start;
-            double t2 = diff.count();
-            double its = n * sample_window * ensemble_count;
-            std::cout << "CPU:  " << (1e9 * t / its) << " ns\n";
-            std::cout << "Wall: " << (1e9 * t2 / its) << " ns\n";
-        }
-
-        std::cout << Stats(js).pow(-1);
+        });
+        VERBOSE bench.report(n * sample_window * ensemble_count);
     }
 }
 
-////
+//// cli interface
 
 enum Simulation { WALK_1D, WALK_2D, UNITEST };
 std::ostream& operator<< (std::ostream &os, const Simulation &sim) {
