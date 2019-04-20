@@ -3,6 +3,8 @@
 
 double LambertW0(double x, const double acc=1e-15);
 unsigned stou(std::string const& str, size_t* idx=0, int base=10);
+std::string format_si(double quantity, std::string unit);
+std::string format_time(double seconds);
 
 struct SimTimer {
     std::clock_t start_cpu;
@@ -22,8 +24,8 @@ struct SimTimer {
         std::chrono::duration<double> diff_wall = end_wall - start_wall;
         double t_wall = diff_wall.count();
 
-        std::cerr << "CPU:  " << (1e9 * t_cpu  / its) << " ns\n";
-        std::cerr << "Wall: " << (1e9 * t_wall / its) << " ns\n";
+        std::cerr << "CPU:  " << format_time(t_cpu/its) << " (" << format_time(t_cpu) << ")\n";
+        std::cerr << "Wall: " << format_time(t_wall/its) << " (" << format_time(t_wall) << ")\n";
     }
 };
 

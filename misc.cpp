@@ -82,3 +82,70 @@ unsigned stou(std::string const& str, size_t* idx, int base) {
     }
     return result;
 }
+
+std::string format_si(double quantity, std::string unit) {
+    const char* prefixes_g[] = {"", "k", "M", "G", "T", "P", "E", "Z", "Y", NULL};
+    const char* prefixes_l[] = {"", "m", "u", "n", "p", "f", "a", "z", "y", NULL};
+
+    const char **prefixes = prefixes_g;
+    if (quantity == 0) {
+    } else if (quantity >= 1) {
+        while (quantity >= 1000 && *(prefixes + 1)) {
+            quantity /= 1000;
+            prefixes++;
+        }
+    } else {
+        prefixes = prefixes_l;
+        while (quantity < 1 && *(prefixes + 1)) {
+            quantity *= 1000;
+            prefixes++;
+        }
+    }
+
+    char buf[50];
+    std::sprintf(buf, "%g", quantity);
+
+    std::string out = "";
+    out += buf;
+    out += " ";
+    out += *prefixes;
+    out += unit;
+    return out;
+}
+
+std::string format_time(double seconds) {
+    std::string out = "";
+    unsigned long long secs = seconds;
+    double subseconds = seconds - secs;
+
+    if (secs > 365 * 86400) {
+        unsigned long long years = secs / (365 * 86400);
+        secs -= years * (365 * 86400);
+        out += std::to_string(years);
+        out += " y ";
+    }
+
+    if (secs > 86400) {
+        unsigned long long days = secs / 86400;
+        secs -= days * 86400;
+        out += std::to_string(days);
+        out += " d ";
+    }
+
+    if (secs > 3600) {
+        unsigned long long hours = secs / 3600;
+        secs -= hours * 3600;
+        out += std::to_string(hours);
+        out += " h ";
+    }
+
+    if (secs > 60) {
+        unsigned long long mins = secs / 60;
+        secs -= mins * 60;
+        out += std::to_string(mins);
+        out += " m ";
+    }
+
+    out += format_si(subseconds + secs, "s");
+    return out;
+}
