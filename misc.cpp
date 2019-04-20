@@ -74,3 +74,11 @@ double LambertW0(double x, const double acc) {
     } while(n++ < 10 && std::abs((w1-w0)/w1) > acc);
     return w1;
 }
+
+unsigned stou(std::string const& str, size_t* idx, int base) {
+    unsigned long result = std::stoul(str, idx, base);
+    if (result > std::numeric_limits<unsigned>::max()) {
+        throw std::out_of_range("stou");
+    }
+    return result;
+}
