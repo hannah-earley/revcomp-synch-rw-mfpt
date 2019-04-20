@@ -12,7 +12,6 @@
 #include <cctype>
 #include <cstring>
 #include <string>
-#include <signal.h>
 #include "pcg/pcg_random.hpp"
 #include "walk.h"
 
@@ -156,13 +155,7 @@ struct PersistentVector {
     }
 
     void store(const std::vector<S>& vec) {
-        // prevent interrupts during storage
-        struct sigaction new_act, old_act;
-        new_act.sa_handler = SIG_IGN;
-        sigemptyset(&new_act.sa_mask);
-        new_act.sa_flags = 0;
-        sigaction(SIGINT, &new_act, &old_act);
-        // interrupts...
+        Uninterruptable unint;
 
         if (wc.pv_filename.empty())
             return;
@@ -172,10 +165,6 @@ struct PersistentVector {
         fs << "# " << wc.cmd << std::endl;
         for (const S& x : vec)
             write1(fs, x);
-
-        // uninstall interrupt handler
-        sigaction(SIGINT, &old_act, NULL);
-        // interrupts...
     }
 
     static S read1(std::string);

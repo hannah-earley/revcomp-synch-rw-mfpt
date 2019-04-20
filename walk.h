@@ -1,4 +1,5 @@
 #include <chrono>
+#include <signal.h>
 
 double LambertW0(double x, const double acc=1e-15);
 unsigned stou(std::string const& str, size_t* idx=0, int base=10);
@@ -23,5 +24,23 @@ struct SimTimer {
 
         std::cerr << "CPU:  " << (1e9 * t_cpu  / its) << " ns\n";
         std::cerr << "Wall: " << (1e9 * t_wall / its) << " ns\n";
+    }
+};
+
+// temporarily install an ignoring signal handler for ^C interrupt
+class Uninterruptable {
+    struct sigaction old_act;
+
+public:
+    Uninterruptable() {
+        struct sigaction new_act;
+        new_act.sa_handler = SIG_IGN;
+        sigemptyset(&new_act.sa_mask);
+        new_act.sa_flags = 0;
+        sigaction(SIGINT, &new_act, &old_act);
+    }
+
+    ~Uninterruptable() {
+        sigaction(SIGINT, &old_act, NULL);
     }
 };
