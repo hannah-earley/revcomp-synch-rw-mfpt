@@ -5,6 +5,7 @@
 #include <cmath>
 #include <chrono>
 #include <cstdlib>
+#include <unistd.h>
 #include "pcg/pcg_random.hpp"
 #include "walk.h"
 
@@ -68,12 +69,14 @@ void mfpt1d(double bias, S init, size_t n) {
     std::bernoulli_distribution fwd(p);
 
     std::vector<S> ensemble(n, init);
-    std::geometric_distribution<S> seed_distr(bias/p);
-    for (S& w : ensemble)
-        w = -seed_distr(rng);
+    if (bias > 0) {
+        std::geometric_distribution<S> seed_distr(bias/p);
+        for (S& w : ensemble)
+            w = -seed_distr(rng);
+    }
 
-    size_t sample_window = 10000;
-    size_t ensemble_count = 10000;
+    size_t sample_window = 1000;
+    size_t ensemble_count = 1000;
     std::vector<double> js(ensemble_count, 0);
     while (1) {
         // auto c_start = std::clock();
@@ -192,7 +195,7 @@ void mfpt2d_seed(double bias, int width, pcg32& rng, std::vector<Coord2D>& ensem
     }
 }
 
-void mfpt2d(double bias, int init, uint width, size_t n) {
+void mfpt2d(double bias, uint init, uint width, size_t n) {
     pcg_extras::seed_seq_from<std::random_device> seed_source;
     pcg32 rng(seed_source);
 
@@ -236,8 +239,106 @@ void mfpt2d(double bias, int init, uint width, size_t n) {
 
 ////
 
+enum Simulation { WALK_1D, WALK_2D, UNITEST };
+std::ostream& operator<< (std::ostream &os, const Simulation &sim) {
+    switch (sim) {
+        case WALK_1D: return os << "MFPT - 1D Walk";
+        case WALK_2D: return os << "MFPT - 2D Walk (Constrained/Quadrant)";
+        case UNITEST: return os << "Unit Tests";
+    }
+}
+
+void help(int argc, char *argv[]) {
+    char progn_def[] = "./walk";
+    char *progn = progn_def;
+    if (argc > 0) progn = argv[0];
+
+    fprintf(stderr, "Usage: %s [-1|-2|-t] [-b bias] [-d distance] [-w width] [-n count]\n", progn);
+    fprintf(stderr, "    -1           Compute 1D walk MFPT\n");
+    fprintf(stderr, "    -2           Compute 2D walk MFPT\n");
+    fprintf(stderr, "    -t           Perform unit tests\n");
+    fprintf(stderr, "    -b bias      Biased walk, bias \\in [-1,1]\n");
+    fprintf(stderr, "    -d distance  Starting point, [nat]\n");
+    fprintf(stderr, "    -w width     Constriction width (2D only), [nat]\n");
+    fprintf(stderr, "    -n count     Number of walkers in ensemble, [nat]\n");
+}
+
+int unit_tests() {
+    std::cout << "# Quadrant Step Test\n";
+    quad_step_test();
+    std::cout << "\n";
+
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
-    // quad_step_test();
-    mfpt2d(0.5, 80, 1, 1000);
-    // mfpt1d<int>(0.001, -1, 1000);
+    double bias = 0;
+    uint width = 1;
+    uint dist = 1;
+    size_t n = 1000;
+    Simulation sim = UNITEST;
+
+    int c;
+    while ((c = getopt(argc, argv, "12tb:w:n:d:")) != -1) switch(c) {
+        case '1':
+            sim = WALK_1D;
+            break;
+        case '2':
+            sim = WALK_2D;
+            break;
+        case 't':
+            sim = UNITEST;
+            break;
+        case 'b':
+            bias = std::stod(optarg);
+            if (bias < -1 || bias > 1) {
+                std::cerr << "Bias outside range..\n\n";
+                goto help;
+            }
+            break;
+        case 'w':
+            width = stou(optarg);
+            break;
+        case 'n':
+            n = std::stoul(optarg);
+            break;
+        case 'd':
+            dist = stou(optarg);
+            if (dist > 2147483647) { 
+                std::cerr << "Distance outside range..\n\n";
+                goto help;
+            }
+            break;
+        case 'h':
+        case '?':
+        default:
+            goto help;
+    }
+
+    std::cout << "Running simulation: " << sim << std::endl;
+    std::cout << "  Bias:               " << bias << std::endl;
+    std::cout << "  Distance:           " << dist << std::endl;
+  if (sim == WALK_2D)
+    std::cout << "  Constriction Width: " << width << std::endl;
+    std::cout << "  Ensemble Count:     " << n << std::endl;
+    std::cout << std::endl;
+
+    switch (sim) {
+        case WALK_1D:
+            mfpt1d<int>(bias, -(int)dist, n);
+            break;
+
+        case WALK_2D:
+            mfpt2d(bias, dist, width, n);
+            break;
+
+        case UNITEST:
+            unit_tests();
+            break;
+    }
+
+    return 0;
+help:
+    help(argc, argv);
+    return 1;
 }
