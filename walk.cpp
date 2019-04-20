@@ -6,6 +6,8 @@
 #include <chrono>
 #include <cstdlib>
 #include <unistd.h>
+#include <omp.h>
+#include <atomic>
 #include "pcg/pcg_random.hpp"
 #include "walk.h"
 
@@ -80,26 +82,46 @@ void mfpt1d(double bias, S init, size_t n) {
 
     size_t sample_window = 1000;
     size_t ensemble_count = 1000;
+    std::vector<size_t> rs(ensemble_count, 0);
     std::vector<double> js(ensemble_count, 0);
+
     while (1) {
         auto c_start = std::clock();
-        for (double& j : js) {
-            j = 0;
-            size_t r = 0;
-            for (size_t t = 0; t < sample_window; t++) {
-                for (S& w : ensemble) {
+        auto start = std::chrono::high_resolution_clock::now();
+
+        for (auto &r : rs) r = 0;
+
+        #pragma omp parallel for
+        for (size_t i = 0; i < n; i++) {
+            S& w = ensemble[i];
+            for (size_t j = 0; j < ensemble_count; j++) {
+                size_t r = 0;
+                for (size_t t = 0; t < sample_window; t++) {
                     w += fwd(rng) ? 1 : -1;
                     if (w >= term) {
                         w = init;
                         r++;
                     }
                 }
+                #pragma omp atomic
+                rs[j] += r;
             }
-            j = (double)r / (double)n / (double)sample_window;
         }
-        auto c_end = std::clock();
-        auto t = (1.0 * (c_end - c_start)) / CLOCKS_PER_SEC;
-        VERBOSE std::cout << (1e9 * t / (n * sample_window * ensemble_count)) << " ns\n";
+
+        for (size_t i = 0; i < ensemble_count; i++)
+            js[i] = (double)rs[i] / (double)n / (double) sample_window;
+
+        VERBOSE {
+            auto c_end = std::clock();
+            auto end = std::chrono::high_resolution_clock::now();
+            auto t = (1.0 * (c_end - c_start)) / CLOCKS_PER_SEC;
+            std::chrono::duration<double> diff = end-start;
+            double t2 = diff.count();
+            double its = n * sample_window * ensemble_count;
+            std::cout << "CPU:  " << (1e9 * t / its) << " ns\n";
+            std::cout << "Wall: " << (1e9 * t2 / its) << " ns\n";
+        }
+
         std::cout << Stats(js).pow(-1);
     }
 }
@@ -216,14 +238,21 @@ void mfpt2d(double bias, uint init, uint width, size_t n) {
 
     size_t sample_window = 1000;
     size_t ensemble_count = 1000;
+    std::vector<size_t> rs(ensemble_count, 0);
     std::vector<double> js(ensemble_count, 0);
+
     while (1) {
         auto c_start = std::clock();
-        for (double& j : js) {
-            j = 0;
-            size_t r = 0;
-            for (size_t t = 0; t < sample_window; t++) {
-                for (Coord2D& w : ensemble) {
+        auto start = std::chrono::high_resolution_clock::now();
+
+        for (auto &r : rs) r = 0;
+
+        #pragma omp parallel for
+        for (size_t i = 0; i < n; i++) {
+            Coord2D& w = ensemble[i];
+            for (size_t j = 0; j < ensemble_count; j++) {
+                size_t r = 0;
+                for (size_t t = 0; t < sample_window; t++) {
                     w.move_ql(step(rng));
                     if (w.x >= term) {
                         w.x = init;
@@ -231,12 +260,25 @@ void mfpt2d(double bias, uint init, uint width, size_t n) {
                         r++;
                     }
                 }
+                #pragma omp atomic
+                rs[j] += r;
             }
-            j = (double)r / (double)n / (double)sample_window;
         }
-        auto c_end = std::clock();
-        auto t = (1.0 * (c_end - c_start)) / CLOCKS_PER_SEC;
-        VERBOSE std::cout << (1e9 * t / (n * sample_window * ensemble_count)) << " ns\n";
+
+        for (size_t i = 0; i < ensemble_count; i++)
+            js[i] = (double)rs[i] / (double)n / (double) sample_window;
+
+        VERBOSE {
+            auto c_end = std::clock();
+            auto end = std::chrono::high_resolution_clock::now();
+            auto t = (1.0 * (c_end - c_start)) / CLOCKS_PER_SEC;
+            std::chrono::duration<double> diff = end-start;
+            double t2 = diff.count();
+            double its = n * sample_window * ensemble_count;
+            std::cout << "CPU:  " << (1e9 * t / its) << " ns\n";
+            std::cout << "Wall: " << (1e9 * t2 / its) << " ns\n";
+        }
+
         std::cout << Stats(js).pow(-1);
     }
 }
