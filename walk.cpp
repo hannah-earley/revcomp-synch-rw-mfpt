@@ -67,6 +67,18 @@ pcg32 fresh_rng() {
     return pcg32(seed_source);
 }
 
+pcg32 &omp_thread_rng(std::vector<pcg32>& rngs) {
+    // ensures each thread has a distinct rng
+    #pragma omp master
+    {
+        size_t thread_count = omp_get_num_threads();
+        while (rngs.size() < thread_count)
+            rngs.push_back(fresh_rng());
+    }
+    #pragma omp barrier
+    return rngs[omp_get_thread_num()];
+}
+
 template <typename S, typename F>
 Stats ensemble_walk(std::vector<S>& walkers,
                     size_t ensemble_count,
@@ -80,17 +92,7 @@ Stats ensemble_walk(std::vector<S>& walkers,
 
     #pragma omp parallel
     {
-        // get a fresh rng for each thread
-        #pragma omp master
-        {
-            size_t thread_count = omp_get_num_threads();
-            while (rngs.size() < thread_count)
-                rngs.push_back(fresh_rng());
-        }
-        #pragma omp barrier
-        pcg32& rng = rngs[omp_get_thread_num()];
-
-        // do the actual ensemble of walks
+        pcg32& rng = omp_thread_rng(rngs);
         #pragma omp for
         for (size_t i = 0; i < n; i++) {
             for (size_t j = 0; j < ensemble_count; j++) {
@@ -103,13 +105,20 @@ Stats ensemble_walk(std::vector<S>& walkers,
         } 
     }
 
-    // statistical summary
     for (size_t i = 0; i < ensemble_count; i++)
         js[i] = (double)rs[i] / (double)n / (double) sample_window;
     return Stats(js).pow(-1);
 }
 
 //// 1d walk
+
+template<typename S>
+void mfpt1d_seed(double bias, std::vector<S>& ensemble) {
+    pcg32 rng = fresh_rng();
+    std::geometric_distribution<S> seed_distr(2*bias/(1+bias));
+    for (S& w : ensemble)
+        w = -seed_distr(rng);
+}
 
 template <typename S>
 void mfpt1d(double bias, S init, size_t n) {
@@ -118,12 +127,7 @@ void mfpt1d(double bias, S init, size_t n) {
     std::bernoulli_distribution fwd(p);
 
     std::vector<S> ensemble(n, init);
-    if (bias > 0) {
-        pcg32 rng = fresh_rng();
-        std::geometric_distribution<S> seed_distr(bias/p);
-        for (S& w : ensemble)
-            w = -seed_distr(rng);
-    }
+    if (bias > 0) mfpt1d_seed(bias, ensemble);
 
     size_t sample_window = 10000;
     size_t ensemble_count = 10000;
@@ -228,15 +232,16 @@ void quad_step_test() {
 void mfpt2d_seed(double bias, int width, std::vector<Coord2D>& ensemble) {
     pcg32 rng = fresh_rng();
     std::uniform_real_distribution<double> unit_int(0,1);
+
     for (Coord2D& w : ensemble) {
+        // use an approximate inverse cmf method to obtain the row...
         double x = unit_int(rng);
         int r = (width-1) + 0.5 * (1 + (1 + LambertW0((x - 1) / M_E)) / bias);
+        // the columns are then equidistributed...
         std::uniform_int_distribution<int> col_dist(0,r);
         int c = col_dist(rng);
         w = Coord2D(-r, c);
-        VERBOSE std::cout << w << ", ";
     }
-    VERBOSE std::cout << std::endl;
 }
 
 void mfpt2d(double bias, uint init, uint width, size_t n) {
