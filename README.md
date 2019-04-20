@@ -36,3 +36,9 @@ There are some issues, however
 ## Log
 
 - Stats for MFPT were giving systematic overestimate... this appears to be because we are taking average and variance of reciprocal of random variable (current); instead, we should compute stats for the rv itself (current mean, stdev, sterr) and then derive mfpt stats from these. This is because the distr for mfpt is a bit skewed, whereas the distr for current is more symmetric.
+
+## Usage
+
+- Run the tool with persistence (`-p filename`); that way, the current distribution is always stored on disk, and if the program is interrupted or crashes then we can resume from this save distribution. This means that we can burn the distribution in, and then always start from a burned in distribution, and we can also take more measurements whenever needed.
+    - If we want to increase sample window or measurement ensemble, we can easily do so by adjusting the other parameters to ./walk
+    - If we want to increase the number of walkers, we could manually edit the data file to replicate the distribution as needed, though this may require more burnin...
