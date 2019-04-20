@@ -61,7 +61,6 @@ double LambertW0_neg_(double x) {
 double LambertW0(double x, const double acc) {
     size_t n = 0;
     double w0, w1 = LambertW0_neg_(x);
-    // std::cout << "w(" << x << ")~" << w1 << "\n";
     do {
         w0 = w1;
         double ew = std::exp(w0);
@@ -73,11 +72,5 @@ double LambertW0(double x, const double acc) {
             }
         }
     } while(n++ < 10 && std::abs((w1-w0)/w1) > acc);
-    // std::cout << "w(" << x << ")=" << w1 << ", " << n << " iterations\n";
     return w1;
 }
-
-// int main(int argc, char *argv[]) {
-//     double x = std::stod(argv[1]);
-//     LambertW0(x);
-// }
