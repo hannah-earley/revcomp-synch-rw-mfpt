@@ -9,6 +9,9 @@
 #include "pcg/pcg_random.hpp"
 #include "walk.h"
 
+bool VERBOSE_MODE = false;
+#define VERBOSE if (VERBOSE_MODE)
+
 ////
 
 struct Stats {
@@ -79,7 +82,7 @@ void mfpt1d(double bias, S init, size_t n) {
     size_t ensemble_count = 1000;
     std::vector<double> js(ensemble_count, 0);
     while (1) {
-        // auto c_start = std::clock();
+        auto c_start = std::clock();
         for (double& j : js) {
             j = 0;
             size_t r = 0;
@@ -94,9 +97,9 @@ void mfpt1d(double bias, S init, size_t n) {
             }
             j = (double)r / (double)n / (double)sample_window;
         }
-        // auto c_end = std::clock();
-        // auto t = (1.0 * (c_end - c_start)) / CLOCKS_PER_SEC;
-        // std::cout << (1e9 * t / (n * sample_window * ensemble_count)) << " ns\n";
+        auto c_end = std::clock();
+        auto t = (1.0 * (c_end - c_start)) / CLOCKS_PER_SEC;
+        VERBOSE std::cout << (1e9 * t / (n * sample_window * ensemble_count)) << " ns\n";
         std::cout << Stats(js).pow(-1);
     }
 }
@@ -191,8 +194,9 @@ void mfpt2d_seed(double bias, int width, pcg32& rng, std::vector<Coord2D>& ensem
         std::uniform_int_distribution<int> col_dist(0,r);
         int c = col_dist(rng);
         w = Coord2D(-r, c);
-        // std::cout << w << "\n";
+        VERBOSE std::cout << w << ", ";
     }
+    VERBOSE std::cout << std::endl;
 }
 
 void mfpt2d(double bias, uint init, uint width, size_t n) {
@@ -208,7 +212,7 @@ void mfpt2d(double bias, uint init, uint width, size_t n) {
     QuadWalkStepDistr32 step(p);
 
     std::vector<Coord2D> ensemble(n, Coord2D(init,0));
-    mfpt2d_seed(bias, width, rng, ensemble);
+    if (bias > 0) mfpt2d_seed(bias, width, rng, ensemble);
 
     size_t sample_window = 1000;
     size_t ensemble_count = 1000;
@@ -232,7 +236,7 @@ void mfpt2d(double bias, uint init, uint width, size_t n) {
         }
         auto c_end = std::clock();
         auto t = (1.0 * (c_end - c_start)) / CLOCKS_PER_SEC;
-        std::cout << (1e9 * t / (n * sample_window * ensemble_count)) << " ns\n";
+        VERBOSE std::cout << (1e9 * t / (n * sample_window * ensemble_count)) << " ns\n";
         std::cout << Stats(js).pow(-1);
     }
 }
@@ -253,10 +257,11 @@ void help(int argc, char *argv[]) {
     char *progn = progn_def;
     if (argc > 0) progn = argv[0];
 
-    fprintf(stderr, "Usage: %s [-1|-2|-t] [-b bias] [-d distance] [-w width] [-n count]\n", progn);
+    fprintf(stderr, "Usage: %s [-1|-2|-t] [-v] [-b bias] [-d distance] [-w width] [-n count]\n", progn);
     fprintf(stderr, "    -1           Compute 1D walk MFPT\n");
     fprintf(stderr, "    -2           Compute 2D walk MFPT\n");
     fprintf(stderr, "    -t           Perform unit tests\n");
+    fprintf(stderr, "    -v           Verbose/debug mode\n");
     fprintf(stderr, "    -b bias      Biased walk, bias \\in [-1,1]\n");
     fprintf(stderr, "    -d distance  Starting point, [nat]\n");
     fprintf(stderr, "    -w width     Constriction width (2D only), [nat]\n");
@@ -279,7 +284,7 @@ int main(int argc, char *argv[]) {
     Simulation sim = UNITEST;
 
     int c;
-    while ((c = getopt(argc, argv, "12tb:w:n:d:")) != -1) switch(c) {
+    while ((c = getopt(argc, argv, "12tvb:w:n:d:")) != -1) switch(c) {
         case '1':
             sim = WALK_1D;
             break;
@@ -288,6 +293,8 @@ int main(int argc, char *argv[]) {
             break;
         case 't':
             sim = UNITEST;
+        case 'v':
+            VERBOSE_MODE = true;
             break;
         case 'b':
             bias = std::stod(optarg);
@@ -321,6 +328,8 @@ int main(int argc, char *argv[]) {
   if (sim == WALK_2D)
     std::cout << "  Constriction Width: " << width << std::endl;
     std::cout << "  Ensemble Count:     " << n << std::endl;
+  VERBOSE
+    std::cout << "Verbose output..." << std::endl;
     std::cout << std::endl;
 
     switch (sim) {
