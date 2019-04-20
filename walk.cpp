@@ -287,8 +287,8 @@ Coord2D PersistentVector<Coord2D>::read1(std::string s) {
     if (n == std::string::npos)
         throw std::invalid_argument("Corrupt persistent state... (invalid Coord2D)");
 
-    int x = std::stoi(s);
-    int y = std::stoi(s.substr(n));
+    int x = std::stoi(s.substr(0,n));
+    int y = std::stoi(s.substr(n+1));
     return Coord2D(x, y);
 }
 template<>
