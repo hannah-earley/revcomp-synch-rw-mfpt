@@ -45,7 +45,7 @@ struct Stats {
     }
 
     Stats pow(double exp) const {
-        double m, v, e;
+        double m, e;
         m = std::pow(mean, exp);
         e = std::abs(exp) * m * error / mean;
         return Stats(n, m, e);
@@ -402,10 +402,10 @@ std::string args2cmd(int argc, char *argv[]) {
     for (int i = 0; i < argc; i++) {
         char *arg = argv[i];
 
-        bool quote = strchr(argv[i], ' ') != NULL;
+        bool quote = strchr(arg, ' ') != NULL;
         if (quote) cmd.push_back('"');
 
-        for (char *arg = argv[i]; *arg != '\0'; arg++) {
+        for (; *arg != '\0'; arg++) {
             if (*arg == '\\' || *arg == '"')
                 cmd.push_back('\\');
             cmd.push_back(std::isprint(*arg) ? *arg : '?');
