@@ -370,6 +370,7 @@ std::ostream& operator<< (std::ostream &os, const Simulation &sim) {
         case WALK_2D: return os << "MFPT - 2D Walk (Constrained/Quadrant)";
         case UNITEST: return os << "Unit Tests";
     }
+    return os << "???";
 }
 
 void help(int argc, char *argv[]) {
