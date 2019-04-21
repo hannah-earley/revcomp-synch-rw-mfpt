@@ -1,6 +1,12 @@
-CXX=clang++
-CXXFLAGS=-Xclang -fopenmp -std=c++11 -O3 -Wall -Iinc/
-LINKFLAGS=-lomp
+ifeq (, $(shell which clang++))
+    CXX=g++
+    CXXFLAGS=-fopenmp -std=c++11 -O3 -Wall -Iinc/
+    LINKFLAGS=
+else
+    CXX=clang++
+    CXXFLAGS=-Xclang -fopenmp -std=c++11 -O3 -Wall -Iinc/
+    LINKFLAGS=-lomp
+endif
 OBDIR=obj
 
 DEPS=walk.h

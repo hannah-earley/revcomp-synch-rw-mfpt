@@ -4,3 +4,4 @@ dat/*
 jobs/*
 walk
 .DS_Store
+*.swp
