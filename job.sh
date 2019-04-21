@@ -6,7 +6,7 @@ n=1000
 m=1000
 s=1000
 
-while getopts "b:d:w:n:m:s:" o; do
+while getopts "b:d:w:n:m:s:x:" o; do
     case "${o}" in
         b)
             bias="${OPTARG}"
