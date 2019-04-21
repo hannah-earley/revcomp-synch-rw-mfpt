@@ -26,6 +26,10 @@ while getopts "b:d:w:n:m:s:" o; do
         s)
             s="${OPTARG}"
             ;;
+        x)
+            m="${OPTARG}"
+            s="${OPTARG}"
+            ;;
     esac
 done
 
