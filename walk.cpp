@@ -426,6 +426,9 @@ int unit_tests() {
 }
 
 int main(int argc, char *argv[]) {
+    std::cout.precision(12);
+    std::cerr.precision(12);
+
     double bias = 0;
     uint width = 1;
     uint dist = 1;

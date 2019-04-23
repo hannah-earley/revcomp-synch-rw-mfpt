@@ -6,7 +6,13 @@ n=1000
 m=1000
 s=1000
 
-while getopts "b:d:w:n:m:s:x:" o; do
+usage () {
+    echo "Usage: $0"
+    echo "         [-b bias] [-d distance] [-w width] [-n n_wlkrs]"
+    echo "         [-m n_meas] [-s smpl_wndw] [-x n_meas^smpl_wndw]"
+}
+
+while getopts ":b:d:w:n:m:s:x:h" o; do
     case "${o}" in
         b)
             bias="${OPTARG}"
@@ -29,6 +35,10 @@ while getopts "b:d:w:n:m:s:x:" o; do
         x)
             m="${OPTARG}"
             s="${OPTARG}"
+            ;;
+        *|h)
+            usage
+            exit 1
             ;;
     esac
 done
