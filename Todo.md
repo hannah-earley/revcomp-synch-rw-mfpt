@@ -26,6 +26,7 @@ Alternative:
     - record fields: mean, error, #measurements
     - from these, we can reconstruct variance
     - can also improve estimates (always take mean in reciprocal...)
+    - APPEND TO FILE
 - `-i` option: iteration limit
     - cease after this many ensemble measurements
     - `-i 0` places no limit
@@ -39,6 +40,10 @@ Alternative:
     - in master thread, print .s evenly up to some # of dots
     - when a thread completes its share, print a , (?)
 
+## `./refine.sh`
+- produce a refined measurement from the `-q` clean output
+- `-s` skip option: skip first few measurements (burnin)
+- computes a refined mean, error and variance
 
 ## `./job.sh`
 - pass through most options
