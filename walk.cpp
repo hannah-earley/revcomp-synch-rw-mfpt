@@ -133,9 +133,12 @@ struct WalkConfig {
 
 template<typename S>
 struct PersistentVector {
+    std::string filename_bak;
     WalkConfig wc;
 
-    PersistentVector(WalkConfig wc) : wc(wc) {}
+    PersistentVector(WalkConfig wc) : wc(wc) {
+        filename_bak = wc.pv_filename + "~";
+    }
 
     void maybe_load(std::vector<S>& vec) {
         if (wc.pv_filename.empty())
@@ -159,12 +162,27 @@ struct PersistentVector {
 
         if (wc.pv_filename.empty())
             return;
+        backup();
+
         std::fstream fs;
         fs.open(wc.pv_filename, std::ios_base::out|std::ios_base::trunc);
 
         fs << "# " << wc.cmd << std::endl;
         for (const S& x : vec)
             write1(fs, x);
+    }
+
+    void backup() {
+        std::fstream orig, bak;
+        std::string line;
+
+        orig.open(wc.pv_filename, std::ios_base::in);
+        if (!orig.is_open() || orig.eof())
+            return;
+
+        bak.open(filename_bak, std::ios_base::out|std::ios_base::trunc);
+        while (std::getline(orig, line))
+            bak << line << std::endl;
     }
 
     static S read1(std::string);

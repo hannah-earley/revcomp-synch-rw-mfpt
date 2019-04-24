@@ -49,3 +49,8 @@ Alternative:
 - pass through most options
 - just extract certain values for filename purposes...
 - and maybe automatically insert `-2v` ?
+
+# Done
+- safer checkpointing:
+    - first, copy current checkpoint file to `./path/to/checkpoint.dat~`
+    - then replace current checkpoint file...
