@@ -1,55 +1,62 @@
 #!/bin/bash
-bias=1
+bias=0
 dist=1
 widt=1
-n=1000
-m=1000
-s=1000
+suff=
 
 usage () {
-    echo "Usage: $0"
-    echo "         [-b bias] [-d distance] [-w width] [-n n_wlkrs]"
-    echo "         [-m n_meas] [-s smpl_wndw] [-x n_meas^smpl_wndw]"
+    echo "Usage: $0 [OPTIONS]"
+    echo "  ADDITIONAL OPTIONS:"
+    echo "    -S suffix    suffix/variant for the filename/output,"
+    echo "                 useful for concurrent runs of a given job"
+    echo
+    echo "  - Otherwise options same as for ./walk"
+    echo "  - -2v is added to options automatically"
+    echo "  - Output filenames will be generated from"
+    echo "    the supplied bias and supplied to ./walk"
+    echo
+    ./walk -h
 }
 
-while getopts ":b:d:w:n:m:s:x:h" o; do
-    case "${o}" in
-        b)
-            bias="${OPTARG}"
-            ;;
-        d)
-            dist="${OPTARG}"
-            ;;
-        w)
-            widt="${OPTARG}"
-            ;;
-        n)
-            n="${OPTARG}"
-            ;;
-        m)
-            m="${OPTARG}"
-            ;;
-        s)
-            s="${OPTARG}"
-            ;;
-        x)
-            m="${OPTARG}"
-            s="${OPTARG}"
-            ;;
-        *|h)
-            usage
-            exit 1
-            ;;
-    esac
+options () {
+    while getopts ":b:d:w:S:h" o; do
+        case "${o}" in
+            b)
+                bias="${OPTARG}"
+                ;;
+            d)
+                dist="${OPTARG}"
+                ;;
+            w)
+                widt="${OPTARG}"
+                ;;
+            S)
+                suff="-${OPTARG}"
+                ;;
+            h)
+                usage
+                exit 1
+                ;;
+            \?|:)
+                ;;
+        esac
+    done
+}
+
+options "$@"
+while [ "$OPTIND" -lt "$#" ]; do
+    # keep processing arguments after unexpected options...
+    OPTIND+=1
+    options "$@"
 done
 
 dir="./jobs"
-file="2d-$bias-$widt-$dist"
+file="2d-$bias-$widt-$dist$suff"
 log="$dir/$file.log"
+csv="$dir/$file.csv"
 dat="$dir/$file.dat"
 
 mkdir -p "$dir"
-echo "#" ./walk -2 -v -b "$bias" -d "$dist" -w "$widt" \
-     -n "$n" -m "$m" -s "$s" -p "$dat" >> "$log"
-./walk -2 -v -b "$bias" -d "$dist" -w "$widt" -n "$n" \
-       -m "$m" -s "$s" -p "$dat" 2>&1 | tee -a "$log"
+echo "#" "$0" "$@" >> "$log"
+echo "#" ./walk "$@" -2 -v -p "$dat" -q "$csv" >> "$log"
+./walk "$@" -2 -v -p "$dat" -q "$csv" 2>&1 | tee -a "$log"
