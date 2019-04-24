@@ -127,16 +127,21 @@ Stats ensemble_walk(std::vector<S>& walkers,
     #pragma omp parallel
     {
         pcg32& rng = omp_thread_rng(rngs);
+        std::vector<size_t> rs_loc(wc.ensemble_count, 0);
+
         #pragma omp for
         for (size_t i = 0; i < n; i++) {
             for (size_t j = 0; j < wc.ensemble_count; j++) {
                 size_t r = 0;
                 for (size_t t = 0; t < wc.sample_window; t++)
                     step_fn(walkers[i], rng, r);
-                #pragma omp atomic
-                rs[j] += r;
+                rs_loc[j] += r;
             }
-        } 
+        }
+
+        #pragma omp critical
+        for (size_t j = 0; j < wc.ensemble_count; j++)
+            rs[j] += rs_loc[j];
     }
 
     for (size_t i = 0; i < wc.ensemble_count; i++)
