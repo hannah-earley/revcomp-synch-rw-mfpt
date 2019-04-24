@@ -32,11 +32,6 @@ Alternative:
     - in master thread, print .s evenly up to some # of dots
     - when a thread completes its share, print a , (?)
 
-## `./refine.sh`
-- produce a refined measurement from the `-q` clean output
-- `-s` skip option: skip first few measurements (burnin)
-- computes a refined mean, error and variance
-
 # Done
 - safer checkpointing:
     - first, copy current checkpoint file to `./path/to/checkpoint.dat~`
@@ -54,3 +49,8 @@ Alternative:
 - pass through most options
 - just extract certain values for filename purposes...
 - and maybe automatically insert `-2v` ?
+
+## `./refine.sh`
+- produce a refined measurement from the `-q` clean output
+- `-s` skip option: skip first few measurements (burnin)
+- computes a refined mean, error ~and variance~
