@@ -144,9 +144,10 @@ Stats ensemble_walk(std::vector<S>& walkers,
             }
         }
 
-        #pragma omp critical
-        for (size_t j = 0; j < wc.ensemble_count; j++)
+        for (size_t j = 0; j < wc.ensemble_count; j++) {
+            #pragma omp atomic
             rs[j] += rs_loc[j];
+        }
     }
 
     for (size_t i = 0; i < wc.ensemble_count; i++)
