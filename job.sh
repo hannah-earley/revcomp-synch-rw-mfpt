@@ -49,7 +49,7 @@ options () {
 }
 
 options "$@"
-while [ "$OPTIND" -lt "$#" ]; do
+while [ "$OPTIND" -le "$#" ]; do
     # keep processing arguments after unexpected options...
     argv+=("${!OPTIND}")
     OPTIND+=1
