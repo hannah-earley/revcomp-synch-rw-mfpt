@@ -22,11 +22,6 @@ Alternative:
 - We must also ensure sufficient precision
 
 ### Plan
-- `-q` option: clean output file
-    - record fields: mean, error, #measurements
-    - from these, we can reconstruct variance
-    - can also improve estimates (always take mean in reciprocal...)
-    - APPEND TO FILE
 - progress meter
     - if iteration count exceeds some threshold...
     - place within outermost loop of ensemble_walk
@@ -54,3 +49,8 @@ Alternative:
 - `-i` option: iteration limit
     - cease after this many ensemble measurements
     - `-i 0` places no limit
+- `-q` option: clean output file
+    - record fields: mean, error, #measurements
+    - from these, we can reconstruct variance
+    - can also improve estimates (always take mean in reciprocal...)
+    - APPEND TO FILE

@@ -19,6 +19,22 @@
 bool VERBOSE_MODE = false;
 #define VERBOSE if (VERBOSE_MODE)
 
+//// walk config
+
+struct WalkConfig {
+    size_t n;
+    std::string pv_filename;
+    std::string out_filename;
+    size_t sample_window;
+    size_t ensemble_count;
+    size_t loop_count;
+    std::string cmd;
+
+    double iterations() {
+        return (double)n * (double)sample_window * (double)ensemble_count;
+    }
+};
+
 //// statistical analysis
 
 struct Stats {
@@ -57,6 +73,19 @@ struct Stats {
     }
 
     friend std::ostream& operator<< (std::ostream &os, const Stats &stats);
+
+    void store(std::string filename) {
+        if (filename.empty())
+            return;
+
+        std::fstream fs;
+        fs.open(filename, std::ios_base::out|std::ios_base::app);
+        if (fs.tellp() <= 0) // write header
+            fs << "#mean,stderr,n" << std::endl;
+
+        fs.precision(16);
+        fs << mean << "," << error << "," << n << std::endl;
+    }
 };
 
 std::ostream& operator<<(std::ostream& os, const Stats &stats) {
@@ -87,23 +116,22 @@ pcg32 &omp_thread_rng(std::vector<pcg32>& rngs) {
 
 template <typename S, typename F>
 Stats ensemble_walk(std::vector<S>& walkers,
-                    size_t ensemble_count,
-                    size_t sample_window,
+                    WalkConfig wc,
                     std::vector<pcg32>& rngs,
                     F step_fn)
 {
     size_t n = walkers.size();
-    std::vector<size_t> rs(ensemble_count, 0);
-    std::vector<double> js(ensemble_count, 0);
+    std::vector<size_t> rs(wc.ensemble_count, 0);
+    std::vector<double> js(wc.ensemble_count, 0);
 
     #pragma omp parallel
     {
         pcg32& rng = omp_thread_rng(rngs);
         #pragma omp for
         for (size_t i = 0; i < n; i++) {
-            for (size_t j = 0; j < ensemble_count; j++) {
+            for (size_t j = 0; j < wc.ensemble_count; j++) {
                 size_t r = 0;
-                for (size_t t = 0; t < sample_window; t++)
+                for (size_t t = 0; t < wc.sample_window; t++)
                     step_fn(walkers[i], rng, r);
                 #pragma omp atomic
                 rs[j] += r;
@@ -111,25 +139,13 @@ Stats ensemble_walk(std::vector<S>& walkers,
         } 
     }
 
-    for (size_t i = 0; i < ensemble_count; i++)
-        js[i] = (double)rs[i] / (double)n / (double) sample_window;
-    return Stats(js).pow(-1);
+    for (size_t i = 0; i < wc.ensemble_count; i++)
+        js[i] = (double)rs[i] / (double)n / (double) wc.sample_window;
+
+    Stats j(js);
+    j.store(wc.out_filename);
+    return j.pow(-1);
 }
-
-//// walk miscellanea
-
-struct WalkConfig {
-    size_t n;
-    std::string pv_filename;
-    size_t sample_window;
-    size_t ensemble_count;
-    size_t loop_count;
-    std::string cmd;
-
-    double iterations() {
-        return (double)n * (double)sample_window * (double)ensemble_count;
-    }
-};
 
 //// persistence
 
@@ -226,7 +242,7 @@ void mfpt1d(double bias, S init, WalkConfig wc) {
 
     for (size_t loopi = 0; loopi < wc.loop_count; loopi++) {
         SimTimer bench;
-        std::cout << ensemble_walk(ensemble, wc.ensemble_count, wc.sample_window, rngs,
+        std::cout << ensemble_walk(ensemble, wc, rngs,
         [&](S& w, pcg32& rng, size_t& r) {
             w += fwd(rng) ? 1 : -1;
             if (w >= term) {
@@ -367,7 +383,7 @@ void mfpt2d(double bias, uint init, uint width, WalkConfig wc) {
 
     for (size_t loopi = 0; loopi < wc.loop_count; loopi++) {
         SimTimer bench;
-        std::cout << ensemble_walk(ensemble, wc.ensemble_count, wc.sample_window, rngs,
+        std::cout << ensemble_walk(ensemble, wc, rngs,
         [&](Coord2D& w, pcg32& rng, size_t& r) {
             w.move_ql(step(rng));
             if (w.x >= term) {
@@ -409,6 +425,7 @@ void help(int argc, char *argv[]) {
     fprintf(stderr, "    -w width     Constriction width (2D only), [nat]\n");
     fprintf(stderr, "    -n count     Number of walkers in ensemble, [nat]\n");
     fprintf(stderr, "    -p filename  Persistence file\n");
+    fprintf(stderr, "    -q filename  Clean output file\n");
     fprintf(stderr, "    -m count     Number of measurements, [nat]\n");
     fprintf(stderr, "    -s window    Sample time window, [nat]\n");
     fprintf(stderr, "    -x count     Sets both m and s, [nat]\n");
@@ -457,6 +474,7 @@ int main(int argc, char *argv[]) {
     WalkConfig wc = {
         .n = 1000,
         .pv_filename = "",
+        .out_filename = "",
         .sample_window = 1000,
         .ensemble_count = 1000,
         .loop_count = 0,
@@ -464,7 +482,7 @@ int main(int argc, char *argv[]) {
     };
 
     int c;
-    while ((c = getopt(argc, argv, "12tvh?b:w:n:d:p:m:s:x:i:")) != -1) switch(c) {
+    while ((c = getopt(argc, argv, "12tvh?b:w:n:d:p:q:m:s:x:i:")) != -1) switch(c) {
         case '1':
             sim = WALK_1D;
             break;
@@ -498,6 +516,9 @@ int main(int argc, char *argv[]) {
             break;
         case 'p':
             wc.pv_filename = optarg;
+            break;
+        case 'q':
+            wc.out_filename = optarg;
             break;
         case 'm':
             wc.ensemble_count = std::stoul(optarg);
