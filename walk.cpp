@@ -12,6 +12,7 @@
 #include <cctype>
 #include <cstring>
 #include <string>
+#include <limits>
 #include "pcg/pcg_random.hpp"
 #include "walk.h"
 
@@ -122,6 +123,7 @@ struct WalkConfig {
     std::string pv_filename;
     size_t sample_window;
     size_t ensemble_count;
+    size_t loop_count;
     std::string cmd;
 
     double iterations() {
@@ -222,7 +224,7 @@ void mfpt1d(double bias, S init, WalkConfig wc) {
     PersistentVector<S> pv(wc);
     pv.maybe_load(ensemble);
 
-    while (1) {
+    for (size_t loopi = 0; loopi < wc.loop_count; loopi++) {
         SimTimer bench;
         std::cout << ensemble_walk(ensemble, wc.ensemble_count, wc.sample_window, rngs,
         [&](S& w, pcg32& rng, size_t& r) {
@@ -363,7 +365,7 @@ void mfpt2d(double bias, uint init, uint width, WalkConfig wc) {
     PersistentVector<Coord2D> pv(wc);
     pv.maybe_load(ensemble);
 
-    while (1) {
+    for (size_t loopi = 0; loopi < wc.loop_count; loopi++) {
         SimTimer bench;
         std::cout << ensemble_walk(ensemble, wc.ensemble_count, wc.sample_window, rngs,
         [&](Coord2D& w, pcg32& rng, size_t& r) {
@@ -410,6 +412,7 @@ void help(int argc, char *argv[]) {
     fprintf(stderr, "    -m count     Number of measurements, [nat]\n");
     fprintf(stderr, "    -s window    Sample time window, [nat]\n");
     fprintf(stderr, "    -x count     Sets both m and s, [nat]\n");
+    fprintf(stderr, "    -i count     Number of outputs (0=unlimited), [nat]\n");
 }
 
 std::string args2cmd(int argc, char *argv[]) {
@@ -456,11 +459,12 @@ int main(int argc, char *argv[]) {
         .pv_filename = "",
         .sample_window = 1000,
         .ensemble_count = 1000,
+        .loop_count = 0,
         .cmd = args2cmd(argc, argv)
     };
 
     int c;
-    while ((c = getopt(argc, argv, "12tvh?b:w:n:d:p:m:s:x:")) != -1) switch(c) {
+    while ((c = getopt(argc, argv, "12tvh?b:w:n:d:p:m:s:x:i:")) != -1) switch(c) {
         case '1':
             sim = WALK_1D;
             break;
@@ -505,6 +509,9 @@ int main(int argc, char *argv[]) {
             wc.ensemble_count = std::stoul(optarg);
             wc.sample_window = std::stoul(optarg);
             break;
+        case 'i':
+            wc.loop_count = std::stoul(optarg);
+            break;
         case 'h':
         case '?':
         default:
@@ -520,10 +527,15 @@ int main(int argc, char *argv[]) {
         std::cerr << "  Walker Count:       " << wc.n << std::endl;
         std::cerr << "  Measurement Count:  " << wc.ensemble_count << std::endl;
         std::cerr << "  Sample Window:      " << wc.sample_window << std::endl;
+    if (wc.loop_count > 0)
+        std::cerr << "  Output Count:       " << wc.loop_count << std::endl;
     if (!wc.pv_filename.empty())
         std::cerr << "  Persisting to:      " << wc.pv_filename << std::endl;
         std::cerr << std::endl;
     }
+
+    if (wc.loop_count == 0)
+        wc.loop_count = std::numeric_limits<size_t>::max();
 
     switch (sim) {
         case WALK_1D:
