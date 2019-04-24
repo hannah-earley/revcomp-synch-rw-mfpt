@@ -134,8 +134,27 @@ Stats ensemble_walk(std::vector<S>& walkers,
         pcg32& rng = omp_thread_rng(rngs);
         std::vector<size_t> rs_loc(wc.ensemble_count, 0);
 
+        // progress
+        size_t progress_its = 0;
+        size_t progress_10pc = 0;
+        size_t progress_chunk = (n / omp_get_num_threads()) + 1;
+        int thread = omp_get_thread_num();
+
         #pragma omp for
         for (size_t i = 0; i < n; i++) {
+            // progress (only from master)
+            VERBOSE if (thread == 0) {
+                if (progress_its == 0) {
+                    std::cout << "0%.." << std::flush;
+                }
+                progress_its++;
+                size_t n10pc = (progress_its * 10) / progress_chunk;
+                while (progress_10pc < n10pc && progress_10pc < 9) {
+                    progress_10pc++;
+                    std::cout << progress_10pc << "0%.." << std::flush;
+                }
+            }
+
             for (size_t j = 0; j < wc.ensemble_count; j++) {
                 size_t r = 0;
                 for (size_t t = 0; t < wc.sample_window; t++)
@@ -148,7 +167,15 @@ Stats ensemble_walk(std::vector<S>& walkers,
             #pragma omp atomic
             rs[j] += rs_loc[j];
         }
+
+        // progress (only from master)
+        VERBOSE if (thread == 0) {
+            std::cout << "100%" << std::flush;
+        }
     }
+
+    // progress
+    VERBOSE std::cout << std::endl;
 
     for (size_t i = 0; i < wc.ensemble_count; i++)
         js[i] = (double)rs[i] / (double)n / (double) wc.sample_window;
