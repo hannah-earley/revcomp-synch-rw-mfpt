@@ -41,10 +41,8 @@ options () {
                 usage
                 exit 1
                 ;;
-            \?)
+            \?|:)
                 argv+=("-${OPTARG}")
-                ;;
-            :)
                 ;;
         esac
     done
@@ -64,7 +62,11 @@ log="$dir/$file.log"
 csv="$dir/$file.csv"
 dat="$dir/$file.dat"
 
+argv+=(-2 -v)
+argv+=(-p "$dat")
+argv+=(-q "$csv")
+
 mkdir -p "$dir"
 echo "#" "$0" "$@" >> "$log"
-echo "#" ./walk "${argv[@]}" -2 -v -p "$dat" -q "$csv" >> "$log"
-./walk "${argv[@]}" -2 -v -p "$dat" -q "$csv" 2>&1 | tee -a "$log"
+echo "#" ./walk "${argv[@]}" >> "$log"
+./walk "${argv[@]}" 2>&1 | tee -a "$log"
