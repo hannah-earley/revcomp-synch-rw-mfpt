@@ -44,4 +44,4 @@ if __name__ == '__main__':
     inv_err = agg_err * inv_mean * inv_mean
 
     # print(f"{agg_mean} (±{agg_err})")
-    print(f"mean: {inv_mean} (±{inv_err})")
+    print("mean: %r (±%r)" % (inv_mean, inv_err))
