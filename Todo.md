@@ -37,11 +37,6 @@ Alternative:
 - `-s` skip option: skip first few measurements (burnin)
 - computes a refined mean, error and variance
 
-## `./job.sh`
-- pass through most options
-- just extract certain values for filename purposes...
-- and maybe automatically insert `-2v` ?
-
 # Done
 - safer checkpointing:
     - first, copy current checkpoint file to `./path/to/checkpoint.dat~`
@@ -54,3 +49,8 @@ Alternative:
     - from these, we can reconstruct variance
     - can also improve estimates (always take mean in reciprocal...)
     - APPEND TO FILE
+
+## `./job.sh`
+- pass through most options
+- just extract certain values for filename purposes...
+- and maybe automatically insert `-2v` ?
