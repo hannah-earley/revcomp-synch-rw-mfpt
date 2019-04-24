@@ -18,17 +18,21 @@ usage () {
     ./walk -h
 }
 
+argv=()
 options () {
     while getopts ":b:d:w:S:h" o; do
         case "${o}" in
             b)
                 bias="${OPTARG}"
+                argv+=(-b "$bias")
                 ;;
             d)
                 dist="${OPTARG}"
+                argv+=(-d "$dist")
                 ;;
             w)
                 widt="${OPTARG}"
+                argv+=(-w "$widt")
                 ;;
             S)
                 suff="-${OPTARG}"
@@ -37,7 +41,10 @@ options () {
                 usage
                 exit 1
                 ;;
-            \?|:)
+            \?)
+                argv+=("-${OPTARG}")
+                ;;
+            :)
                 ;;
         esac
     done
@@ -46,6 +53,7 @@ options () {
 options "$@"
 while [ "$OPTIND" -lt "$#" ]; do
     # keep processing arguments after unexpected options...
+    argv+=("${!OPTIND}")
     OPTIND+=1
     options "$@"
 done
@@ -58,5 +66,5 @@ dat="$dir/$file.dat"
 
 mkdir -p "$dir"
 echo "#" "$0" "$@" >> "$log"
-echo "#" ./walk "$@" -2 -v -p "$dat" -q "$csv" >> "$log"
-./walk "$@" -2 -v -p "$dat" -q "$csv" 2>&1 | tee -a "$log"
+echo "#" ./walk "${argv[@]}" -2 -v -p "$dat" -q "$csv" >> "$log"
+./walk "${argv[@]}" -2 -v -p "$dat" -q "$csv" 2>&1 | tee -a "$log"
