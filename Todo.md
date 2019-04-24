@@ -27,9 +27,6 @@ Alternative:
     - from these, we can reconstruct variance
     - can also improve estimates (always take mean in reciprocal...)
     - APPEND TO FILE
-- `-i` option: iteration limit
-    - cease after this many ensemble measurements
-    - `-i 0` places no limit
 - progress meter
     - if iteration count exceeds some threshold...
     - place within outermost loop of ensemble_walk
@@ -54,3 +51,6 @@ Alternative:
 - safer checkpointing:
     - first, copy current checkpoint file to `./path/to/checkpoint.dat~`
     - then replace current checkpoint file...
+- `-i` option: iteration limit
+    - cease after this many ensemble measurements
+    - `-i 0` places no limit
