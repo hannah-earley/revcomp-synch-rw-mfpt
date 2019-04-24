@@ -74,17 +74,22 @@ struct Stats {
 
     friend std::ostream& operator<< (std::ostream &os, const Stats &stats);
 
-    void store(std::string filename) {
+    template<typename T>
+    void store(std::string filename, T weight) {
         if (filename.empty())
             return;
 
         std::fstream fs;
         fs.open(filename, std::ios_base::out|std::ios_base::app);
         if (fs.tellp() <= 0) // write header
-            fs << "#mean,stderr,n" << std::endl;
+            fs << "#mean,stderr,var,weight" << std::endl;
 
         fs.precision(16);
-        fs << mean << "," << error << "," << n << std::endl;
+        fs << mean << "," << error << "," << weight << std::endl;
+    }
+
+    void store(std::string filename) {
+        store(filename, n);
     }
 };
 
@@ -148,7 +153,7 @@ Stats ensemble_walk(std::vector<S>& walkers,
         js[i] = (double)rs[i] / (double)n / (double) wc.sample_window;
 
     Stats j(js);
-    j.store(wc.out_filename);
+    j.store(wc.out_filename, wc.iterations());
     return j.pow(-1);
 }
 
