@@ -2,6 +2,8 @@
 #include <cmath>
 #include <iostream>
 #include <string>
+#include <iomanip>
+#include <sstream>
 #include "walk.h"
 
 double LambertW0_neg_(double x) {
@@ -148,4 +150,13 @@ std::string format_time(double seconds) {
 
     out += format_si(subseconds + secs, "s");
     return out;
+}
+
+std::string format_timepoint(std::chrono::time_point<std::chrono::system_clock> tp,
+                             const char* fmt)
+{
+    std::stringstream ss;
+    std::time_t time = std::chrono::system_clock::to_time_t(tp);
+    ss << std::put_time(std::localtime(&time), fmt);
+    return ss.str();
 }

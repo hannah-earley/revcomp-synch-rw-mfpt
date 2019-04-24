@@ -22,15 +22,6 @@ Alternative:
 - We must also ensure sufficient precision
 
 ### Plan
-- progress meter
-    - if iteration count exceeds some threshold...
-    - place within outermost loop of ensemble_walk
-    - will need a count for each thread
-        - actually, should only report progress in master thread
-        - otherwise won't be very useful - will tend to get a burst of
-          progress ...... followed by nothing for a while
-    - in master thread, print .s evenly up to some # of dots
-    - when a thread completes its share, print a , (?)
 
 # Done
 - safer checkpointing:
@@ -44,6 +35,15 @@ Alternative:
     - from these, we can reconstruct variance
     - can also improve estimates (always take mean in reciprocal...)
     - APPEND TO FILE
+- progress meter
+    - if iteration count exceeds some threshold...
+    - place within outermost loop of ensemble_walk
+    - will need a count for each thread
+        - actually, should only report progress in master thread
+        - otherwise won't be very useful - will tend to get a burst of
+          progress ...... followed by nothing for a while
+    - in master thread, print .s evenly up to some # of dots
+    - when a thread completes its share, print a , (?)
 
 ## `./job.sh`
 - pass through most options
