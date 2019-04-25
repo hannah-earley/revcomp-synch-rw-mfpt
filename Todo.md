@@ -28,6 +28,9 @@
                 - else confer with .status file
             - print relevant status file info
                 - maybe .status should just be a single line of info to print...
+    - status email
+        - periodically send status update as email to designated email address
+        - simply use sendmail
     - run
         - first, run `os.nice(40)`
         - optionally restrict to a jobset
