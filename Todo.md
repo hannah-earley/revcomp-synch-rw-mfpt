@@ -3,20 +3,7 @@
 ## `./walk`
 
 ## `./batch.py`
-- build job batching utility
-- jobs are stored in ./queue folder
-    - can have subdirs for jobsets
-    - each file describes a distinct job
-    - job descriptor:
-        - options to walk
-        - target output count (-i adjusted to reach this goal)
-        - cpu minimum (check against proc-cpuset)
-            - alternatively, iteration time upper bound
-        - target precision
-            - supply a chunk size (-i) and a maximum output count
-            - will keep running until either exceed output count or reach prec
 - batch tool
-    - verbs...
     - enqueue
         - generate jobs by some formula
         - don't overwrite existinc jobs
@@ -31,27 +18,6 @@
     - status email
         - periodically send status update as email to designated email address
         - simply use sendmail
-    - run
-        - first, run `os.nice(40)`
-        - optionally restrict to a jobset
-        - place a fcntl lock on a job
-            - fcntl locks should be nfs compatible
-        - make a file ./queue/jobset/job-id.status
-            - record hostname
-            - periodically record psutil cpu_percent
-            - job status info
-- job descriptor
-    - options (job.sh)
-        - string or array
-    - target
-        - _either_
-            - count
-        - _or_
-            - chunk
-            - limit
-            - prec
-    - requirements
-        - cpu
 
 
 # Done
@@ -85,10 +51,47 @@
 - just extract certain values for filename purposes...
 - and maybe automatically insert `-2v` ?
 
-## `./refine.sh`
+## `./refine.py`
 - produce a refined measurement from the `-q` clean output
 - `-s` skip option: skip first few measurements (burnin)
 - computes a refined mean, error ~and variance~
+
+## `./batch.py`
+- build job batching utility
+- jobs are stored in ./queue folder
+    - can have subdirs for jobsets
+    - each file describes a distinct job
+    - job descriptor:
+        - options to walk
+        - target output count (-i adjusted to reach this goal)
+        - cpu minimum (check against proc-cpuset)
+            - alternatively, iteration time upper bound
+        - target precision
+            - supply a chunk size (-i) and a maximum output count
+            - will keep running until either exceed output count or reach prec
+- batch tool
+    - verbs...
+    - run
+        - first, run `os.nice(40)`
+        - optionally restrict to a jobset
+        - place a fcntl lock on a job
+            - fcntl locks should be nfs compatible
+        - make a file ./queue/jobset/job-id.status
+            - record hostname
+            - periodically record psutil cpu_percent
+            - job status info
+- job descriptor
+    - options (job.sh)
+        - string or array
+    - target
+        - _either_
+            - count
+        - _or_
+            - chunk
+            - limit
+            - prec
+    - requirements
+        - cpu
 
 
 # Var
