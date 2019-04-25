@@ -1,12 +1,20 @@
 #!/usr/bin/env python3
 import os
+import os.path
+import signal
 import sys
 import json
 import time
+import datetime
 import fcntl
+import socket
 import subprocess
 import contextlib
 import argparse
+import traceback
+
+EXT_JOB = '.job'
+EXT_STAT = '.status'
 
 def handler_help(parser):
     def handler(args):
@@ -21,6 +29,31 @@ handler_enq = handler_none
 
 handler_stat = handler_none
 
+def proc_info(pid, sample_time=1.0):
+    try:
+        import psutil
+    except ImportError:
+        return None
+    else:
+        p = psutil.Process(pid)
+        cs = [p] + p.children(recursive=True)
+        for c in cs:
+            c.cpu_percent()
+        time.sleep(sample_time)
+        cpup = sum(c.cpu_percent() for c in cs)
+
+        try:
+            aff = set()
+            for c in cs:
+                aff += set(c.cpu_affinity())
+            cpun = len(aff)
+        except AttributeError:
+            import multiprocessing
+            cpun = multiprocessing.cpu_count()
+
+    return cpup, cpun
+
+
 
 class Job:
     class TryAgain(Exception): pass
@@ -29,6 +62,7 @@ class Job:
     def __init__(self, job, path):
         self.name = job
         self.path = path
+        self.path_stat = os.path.splitext(path)[0] + EXT_STAT
         self.load()
 
     def load(self):
@@ -113,50 +147,56 @@ class Job:
             finally:
                 fcntl.lockf(fd, fcntl.LOCK_UN)
 
+    def status(self, pid=None):
+        host = socket.gethostname()
+        cpuu = ''
+        n = self.output_count()
+
+        if pid:
+            cpui = proc_info(pid)
+            if cpui is not None:
+                cpup, cpun = cpui
+                cpuu = ' cpu:%.2f/%d (%.1f%%)' % (cpup/100.0,cpun,cpup/cpun)
+
+        stat = 'outs:%d' % n
+        if 'count' in self.target:
+            stat += '/%d' % self.target['count']
+        elif 'chunk' in self.target:
+            prec = self.target['prec']
+            err = self.get_error()
+            stat += '/%d' % self.target['limit']
+            stat += ' err:%g/%g' % (err,prec)
+
+        return '%s [%s]%s %s' % (datetime.datetime.now(),host,cpuu,stat)
+
+    def record_status(self, pid=None, msg='RUNNING', disp=False):
+        s = self.status(pid)
+        _, s_ = s.split('] ')
+        with open(self.path_stat, 'w') as f:
+            f.write('%s %s' % (msg, s))
+        if disp:
+            print('%s: %s' % (self.path, s_))
+
     def execute(self):
+        if not self.can_run():
+            return
         with self.lock():
-            print(self.opts)
-            print(self.target)
-            print(self.reqs)
-            print(self.skip)
+            self.record_status(msg='INITIALISING')
             while True:
                 todo = self.task_size()
                 if todo <= 0:
+                    self.record_status(msg='DONE')
                     return True
-                time.sleep(1)
-                return True
 
+                args = ["./job.sh"] + self.opts + ["-i", str(todo)]
+                dn = subprocess.DEVNULL
+                proc = subprocess.Popen(args, stdout=dn, stderr=dn)
+                i = 0
+                while proc.poll() is None:
+                    self.record_status(proc.pid) #, disp=(i%6==0))
+                    time.sleep(10)
+                    i += 1
 
-
-
-
-
-# def run_job(job, path):
-#     def err(s):
-#         print("%s: %s (%s)" % (job,s,path))
-#     with open(path, 'r+') as fh:
-#         fd = fh.fileno()
-#         try: # acquire exclusive lock
-#             fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-#         except OSError:
-#             return False
-#         try:
-#             try: # read job descriptor
-#                 deets = json.load(fh)
-#             except json.JSONDecodeError:
-#                 return err("Invalid job descriptor")
-
-#             print(job, path, deets)
-#             try:
-#                 jobj = Job(job, path, deets)
-#             except Exception as e:
-#                 return err("Couldn't initialise job [%r]" % e)
-#             time.sleep(1)
-#             return True
-
-
-#         finally: # release lock
-#             fcntl.lockf(fd, fcntl.LOCK_UN)
 def run_job(job, path):
     jobj = Job(job, path)
     try:
@@ -188,35 +228,43 @@ def handler_run(args):
         for dir_ in setdirs:
             for root, _, jobs in os.walk(dir_):
                 for job in jobs:
+                    _, ext = os.path.splitext(job)
                     jobpath = os.path.join(root, job)
                     if jobpath in visited:
                         continue
-                    if run_job(job, jobpath) == False:
+                    if ext == EXT_JOB and run_job(job, jobpath) == False:
                         again = True
                     else:
                         visited.add(jobpath)
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="")
-    parser.add_argument('-q', default='./queue',
-                        help="queue directory")
-    subparsers = parser.add_subparsers(title='commands', help='run with -h for more info')
-    parser.set_defaults(handler=handler_help(parser))
+    os.setpgrp()
+    try:
 
-    parser_enq = subparsers.add_parser('enqeue')
-    parser_enq.set_defaults(handler=handler_enq)
-    
-    parser_stat = subparsers.add_parser('status')
-    parser_stat.set_defaults(handler=handler_stat)
-    
-    parser_run = subparsers.add_parser('run')
-    parser_run.add_argument('--mean', default=False, action='store_true',
-                            help="don't run nicely (e.g. hpc allocation)")
-    parser_run.add_argument('--inf', default=False, action='store_true',
-                            help="run indefinitely")
-    parser_run.add_argument('jobset', nargs='*')
-    parser_run.set_defaults(handler=handler_run)
+        parser = argparse.ArgumentParser(description="")
+        parser.add_argument('-q', default='./queue',
+                            help="queue directory")
+        subparsers = parser.add_subparsers(title='commands', help='run with -h for more info')
+        parser.set_defaults(handler=handler_help(parser))
 
-    args = parser.parse_args()
-    args.handler(args)
+        parser_enq = subparsers.add_parser('enqeue')
+        parser_enq.set_defaults(handler=handler_enq)
+        
+        parser_stat = subparsers.add_parser('status')
+        parser_stat.set_defaults(handler=handler_stat)
+        
+        parser_run = subparsers.add_parser('run')
+        parser_run.add_argument('--mean', default=False, action='store_true',
+                                help="don't run nicely (e.g. hpc allocation)")
+        parser_run.add_argument('--inf', default=False, action='store_true',
+                                help="run indefinitely")
+        parser_run.add_argument('jobset', nargs='*')
+        parser_run.set_defaults(handler=handler_run)
+
+        args = parser.parse_args()
+        args.handler(args)
+
+    except:
+        traceback.print_exc()
+        os.killpg(0, signal.SIGKILL)
