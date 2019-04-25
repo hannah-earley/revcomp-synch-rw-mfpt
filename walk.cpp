@@ -187,6 +187,8 @@ Stats ensemble_walk(std::vector<S>& walkers,
 
 //// persistence
 
+const char PV_EOF[] = "# eof";
+
 template<typename S>
 struct PersistentVector {
     std::string filename_bak;
@@ -207,10 +209,16 @@ struct PersistentVector {
 
         vec.clear();
         while (std::getline(fs, line)) {
-            if (line[0] == '#')
+            if (line[0] == '#') {
+                if (line == PV_EOF)
+                    return;
                 continue;
+            }
             vec.push_back(read1(line));
         }
+
+        std::cout << "Corrupt persistent data file!" << std::endl;
+        std::exit(1);
     }
 
     void store(const std::vector<S>& vec) {
@@ -226,6 +234,7 @@ struct PersistentVector {
         fs << "# " << wc.cmd << std::endl;
         for (const S& x : vec)
             write1(fs, x);
+        fs << PV_EOF << std::endl;
     }
 
     void backup() {
