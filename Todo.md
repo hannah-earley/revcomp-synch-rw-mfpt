@@ -40,6 +40,19 @@
             - record hostname
             - periodically record psutil cpu_percent
             - job status info
+- job descriptor
+    - options (job.sh)
+        - string or array
+    - target
+        - _either_
+            - count
+        - _or_
+            - chunk
+            - limit
+            - prec
+    - requirements
+        - cpu
+
 
 # Done
 
