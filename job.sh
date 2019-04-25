@@ -3,12 +3,14 @@ bias=0
 dist=1
 widt=1
 suff=
+disp_path=0
 
 usage () {
     echo "Usage: $0 [OPTIONS]"
     echo "  ADDITIONAL OPTIONS:"
     echo "    -S suffix    suffix/variant for the filename/output,"
     echo "                 useful for concurrent runs of a given job"
+    echo "    -P           display generated path and exit"
     echo
     echo "  - Otherwise options same as for ./walk"
     echo "  - -2v is added to options automatically"
@@ -20,7 +22,7 @@ usage () {
 
 argv=()
 options () {
-    while getopts ":b:d:w:S:h" o; do
+    while getopts ":b:d:w:S:hP" o; do
         case "${o}" in
             b)
                 bias="${OPTARG}"
@@ -44,6 +46,9 @@ options () {
             \?|:)
                 argv+=("-${OPTARG}")
                 ;;
+            P)
+                disp_path=1
+                ;;
         esac
     done
 }
@@ -61,6 +66,11 @@ file="2d-$bias-$widt-$dist$suff"
 log="$dir/$file.log"
 csv="$dir/$file.csv"
 dat="$dir/$file.dat"
+
+if [ "$disp_path" -eq "1" ]; then
+    echo "$dir/$file"
+    exit 0
+fi
 
 argv+=(-2 -v)
 argv+=(-p "$dat")
