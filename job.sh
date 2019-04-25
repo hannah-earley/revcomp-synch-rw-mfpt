@@ -69,4 +69,6 @@ argv+=(-q "$csv")
 mkdir -p "$dir"
 echo "#" "$0" "$@" >> "$log"
 echo "#" ./walk "${argv[@]}" >> "$log"
+
+set -o pipefail
 ./walk "${argv[@]}" 2>&1 | tee -a "$log"
