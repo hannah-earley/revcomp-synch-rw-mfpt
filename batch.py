@@ -12,6 +12,7 @@ import subprocess
 import contextlib
 import argparse
 import traceback
+import multiprocessing
 
 EXT_JOB = '.job'
 EXT_STAT = '.status'
@@ -29,29 +30,64 @@ handler_enq = handler_none
 
 handler_stat = handler_none
 
-def proc_info(pid, sample_time=1.0):
-    try:
-        import psutil
-    except ImportError:
-        return None
-    else:
-        p = psutil.Process(pid)
-        cs = [p] + p.children(recursive=True)
-        for c in cs:
-            c.cpu_percent()
-        time.sleep(sample_time)
-        cpup = sum(c.cpu_percent() for c in cs)
+class ProcInfo:
+    def __init__(self, pid):
+        self.pid = pid
+        self._cpus = multiprocessing.cpu_count()
+        self.working = False
 
         try:
-            aff = set()
-            for c in cs:
-                aff += set(c.cpu_affinity())
-            cpun = len(aff)
-        except AttributeError:
-            import multiprocessing
-            cpun = multiprocessing.cpu_count()
+            import psutil
+            self.proc = psutil.Process(pid)
+            self.procs = {}
+            self.update_procs()
+            for p in self.procs.values():
+                p.cpu_percent()
+            time.sleep(1)
+            self.working = True
+        except ImportError:
+            pass
 
-    return cpup, cpun
+    def update_procs(self):
+        procsn = {}
+        try:
+            for p in [self.proc] + self.proc.children(recursive=True):
+                if p.status().lower() != 'running':
+                    continue
+                pid = p.pid
+                if pid in self.procs:
+                    procsn[pid] = self.procs[pid]
+                else:
+                    procsn[pid] = p
+        except psutil.NoSuchProcess:
+            pass
+        self.procs = procsn
+
+
+    def cpup(self, update=True):
+        if not self.working:
+            return
+        if update:
+            self.update_procs()
+        return sum(p.cpu_percent() for p in self.procs.values())
+
+    def cpus(self, update=True):
+        if not self.working:
+            return
+        if update:
+            self.update_procs()
+        try:
+            aff = set()
+            for p in self.procs.values():
+                aff += set(p.cpu_affinity())
+            return len(aff)
+        except AttributeError:
+            return self._cpus
+
+    def cpusp(self, update=True):
+        if self.working and update:
+            self.update_procs()
+        return self.cpus(False), self.cpup(False)
 
 
 
@@ -147,16 +183,19 @@ class Job:
             finally:
                 fcntl.lockf(fd, fcntl.LOCK_UN)
 
-    def status(self, pid=None):
+    def status(self):
         host = socket.gethostname()
         cpuu = ''
         n = self.output_count()
 
-        if pid:
-            cpui = proc_info(pid)
-            if cpui is not None:
-                cpup, cpun = cpui
-                cpuu = ' cpu:%.2f/%d (%.1f%%)' % (cpup/100.0,cpun,cpup/cpun)
+        try:
+            pi = self.proc_info
+        except AttributeError:
+            pass
+        else:
+            cpus, cpup = pi.cpusp()
+            if cpus is not None and cpup is not None:
+                cpuu = ' cpu:%.2f/%d (%.1f%%)' % (cpup/100.0,cpus,cpup/cpus)
 
         stat = 'outs:%d' % n
         if 'count' in self.target:
@@ -169,8 +208,8 @@ class Job:
 
         return '%s [%s]%s %s' % (datetime.datetime.now(),host,cpuu,stat)
 
-    def record_status(self, pid=None, msg='RUNNING', disp=False):
-        s = self.status(pid)
+    def record_status(self, msg='RUNNING', disp=False):
+        s = self.status()
         _, s_ = s.split('] ')
         with open(self.path_stat, 'w') as f:
             f.write('%s %s' % (msg, s))
@@ -190,12 +229,19 @@ class Job:
 
                 args = ["./job.sh"] + self.opts + ["-i", str(todo)]
                 dn = subprocess.DEVNULL
-                proc = subprocess.Popen(args, stdout=dn, stderr=dn)
+                self.proc = subprocess.Popen(args, stdout=dn, stderr=dn)
+                self.proc_info = ProcInfo(self.proc.pid)
                 i = 0
-                while proc.poll() is None:
-                    self.record_status(proc.pid) #, disp=(i%6==0))
+                while True:
+                    ret = self.proc.poll()
+                    if ret is not None:
+                        if ret > 0:
+                            return
+                        break
+                    self.record_status(disp=(i%6==0))
                     time.sleep(10)
                     i += 1
+                del self.proc_info
 
 def run_job(job, path):
     jobj = Job(job, path)
@@ -227,6 +273,7 @@ def handler_run(args):
         again = False
         for dir_ in setdirs:
             for root, _, jobs in os.walk(dir_):
+                jobs.sort()
                 for job in jobs:
                     _, ext = os.path.splitext(job)
                     jobpath = os.path.join(root, job)
