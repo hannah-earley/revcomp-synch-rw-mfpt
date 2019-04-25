@@ -82,7 +82,7 @@ struct Stats {
         std::fstream fs;
         fs.open(filename, std::ios_base::out|std::ios_base::app);
         if (fs.tellp() <= 0) // write header
-            fs << "#mean,stderr,var,weight" << std::endl;
+            fs << "#mean,stderr,weight" << std::endl;
 
         fs.precision(16);
         fs << mean << "," << error << "," << weight << std::endl;
