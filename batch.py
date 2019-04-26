@@ -85,7 +85,7 @@ def handler_stat(args):
             msg['To'] = eml
             msg.set_content(stats)
             p = subprocess.Popen(["/usr/sbin/sendmail", "-t", "-oi"], stdin=subprocess.PIPE)
-            p.communicate(msg.as_string())
+            p.communicate(msg.as_string().encode())
 
         if not int_:
             break
