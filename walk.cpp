@@ -590,15 +590,15 @@ int main(int argc, char *argv[]) {
         std::cerr << "Running simulation: " << sim << std::endl;
         std::cerr << "  Bias:               " << bias << std::endl;
         std::cerr << "  Distance:           " << dist << std::endl;
-    if (sim == WALK_2D)
-        std::cerr << "  Constriction Width: " << width << std::endl;
+    if (sim == WALK_2D) {
+        std::cerr << "  Constriction Width: " << width << std::endl; }
         std::cerr << "  Walker Count:       " << wc.n << std::endl;
         std::cerr << "  Measurement Count:  " << wc.ensemble_count << std::endl;
         std::cerr << "  Sample Window:      " << wc.sample_window << std::endl;
-    if (wc.loop_count > 0)
-        std::cerr << "  Output Count:       " << wc.loop_count << std::endl;
-    if (!wc.pv_filename.empty())
-        std::cerr << "  Persisting to:      " << wc.pv_filename << std::endl;
+    if (wc.loop_count > 0) {
+        std::cerr << "  Output Count:       " << wc.loop_count << std::endl; }
+    if (!wc.pv_filename.empty()) {
+        std::cerr << "  Persisting to:      " << wc.pv_filename << std::endl; }
         std::cerr << std::endl;
     }
 
