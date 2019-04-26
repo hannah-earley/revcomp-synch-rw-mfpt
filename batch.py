@@ -81,7 +81,7 @@ def handler_stat(args):
             print('emailing to', eml, '...')
             msg = email.message.EmailMessage()
             msg['Subject'] = 'RWX Batch Update'
-            msg['From'] = 'wje25@maths.cam.ac.uk'
+            msg['From'] = 'RWX Batch <wje25@maths.cam.ac.uk>'
             msg['To'] = eml
             msg.set_content(stats)
             p = subprocess.Popen(["/usr/sbin/sendmail", "-t", "-oi"], stdin=subprocess.PIPE)
@@ -142,7 +142,7 @@ class ProcInfo:
         try:
             aff = set()
             for p in self.procs.values():
-                aff += set(p.cpu_affinity())
+                aff.update(p.cpu_affinity())
             return len(aff)
         except AttributeError:
             return self._cpus
