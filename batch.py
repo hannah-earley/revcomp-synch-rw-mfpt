@@ -194,8 +194,9 @@ class Job:
 
     def _get_filebase(self):
         opts = ['./job.sh'] + self.opts + ['-P', '-i', '0']
-        outp = subprocess.run(opts, capture_output=True)
-        lines = outp.stdout.decode().strip().split('\n')
+        outp = subprocess.Popen(opts, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        sout, serr = outp.communicate()
+        lines = sout.decode().strip().split('\n')
         assert len(lines) == 1, "Job.get_filebase: Invalid output from ./job.sh"
         base = lines[0].strip()
         assert base, "Job.get_filebase: No file base found"
