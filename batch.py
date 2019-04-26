@@ -31,19 +31,21 @@ handler_enq = handler_none
 handler_stat = handler_none
 
 class ProcInfo:
-    def __init__(self, pid):
+    def __init__(self, pid, perc=True):
         self.pid = pid
         self._cpus = multiprocessing.cpu_count()
         self.working = False
+        self.perc = perc
 
         try:
             import psutil
             self.proc = psutil.Process(pid)
             self.procs = {}
             self.update_procs()
-            for p in self.procs.values():
-                p.cpu_percent()
-            time.sleep(1)
+            if self.perc:
+                for p in self.procs.values():
+                    p.cpu_percent()
+                time.sleep(1)
             self.working = True
         except ImportError:
             pass
@@ -65,7 +67,7 @@ class ProcInfo:
 
 
     def cpup(self, update=True):
-        if not self.working:
+        if not self.working or not self.perc:
             return
         if update:
             self.update_procs()
@@ -89,7 +91,8 @@ class ProcInfo:
             self.update_procs()
         return self.cpus(False), self.cpup(False)
 
-
+def cpus():
+    return ProcInfo(None,False).cpus()
 
 class Job:
     class TryAgain(Exception): pass
@@ -166,7 +169,12 @@ class Job:
             return max(min(chunk, limit-curr), 0)
 
     def can_run(self):
-        # could check job requirements here...
+        if 'cpu' in self.reqs:
+            min_cpu = self.reqs['cpu']
+            cur_cpu = cpus()
+            if cur_cpu < min_cpu:
+                print(self.path, ": Too few cpus!")
+                return False
         return True
 
     @contextlib.contextmanager
