@@ -13,9 +13,22 @@ import contextlib
 import argparse
 import traceback
 import multiprocessing
+import pathlib
+from functools import wraps
 
 EXT_JOB = '.job'
 EXT_STAT = '.status'
+
+def no_zombies(f):
+    @wraps(f)
+    def wrapped(*args, **kwargs):
+        os.setpgrp()
+        try:
+            return f(*args, **kwargs)
+        except:
+            traceback.print_exc()
+            os.killpg(0, signal.SIGKILL)
+    return wrapped
 
 def handler_help(parser):
     def handler(args):
@@ -28,7 +41,36 @@ def handler_none(args):
 
 handler_enq = handler_none
 
-handler_stat = handler_none
+def get_stats(args):
+    outp = ""
+    qdir = args.q
+    sep = '  '
+
+    for root, _, jobs in os.walk(args.q):
+        path = pathlib.PurePath(root).relative_to(qdir)
+        parts = path.parts
+        lvl = len(parts)
+        jobs.sort()
+
+        if lvl:
+            print(sep*(lvl-1) + parts[-1] + ':')
+        for job in jobs:
+            jobn, ext = os.path.splitext(job)
+            jobp = os.path.join(root, job)
+            if ext != EXT_JOB:
+                continue
+
+            jobj = Job(job, jobp)
+            print(sep*lvl + jobn, ':', jobj.get_status())
+
+
+def handler_stat(args):
+    int_ = args.interval
+    while True:
+        get_stats(args)
+        if not int_:
+            break
+        time.sleep(int_)
 
 class ProcInfo:
     def __init__(self, pid, perc=True):
@@ -99,12 +141,15 @@ class Job:
     class LockedOut(Exception): pass
 
     def __init__(self, job, path):
+        self.loaded = False
         self.name = job
         self.path = path
         self.path_stat = os.path.splitext(path)[0] + EXT_STAT
-        self.load()
 
-    def load(self):
+    def load(self, force=False):
+        if self.loaded and not force:
+            return
+
         with open(self.path, 'r') as f:
             descriptor = json.load(f)
 
@@ -118,9 +163,17 @@ class Job:
         if 'skip' in self.target:
             self.skip = self.target['skip']
 
-        self.filebase = self.get_filebase()
+        self.filebase = self._get_filebase()
+        self.loaded = True
 
-    def get_filebase(self):
+    def needload(f):
+        @wraps(f)
+        def wrapped(self, *args, **kwargs):
+            self.load()
+            return f(self, *args, **kwargs)
+        return wrapped
+
+    def _get_filebase(self):
         opts = ['./job.sh'] + self.opts + ['-P', '-i', '0']
         outp = subprocess.run(opts, capture_output=True, encoding='utf-8')
         lines = outp.stdout.strip().split('\n')
@@ -129,6 +182,7 @@ class Job:
         assert base, "Job.get_filebase: No file base found"
         return base
 
+    @needload
     def output_count(self):
         path = self.filebase + ".csv"
         n = -self.skip
@@ -142,6 +196,7 @@ class Job:
             pass
         return n
 
+    @needload
     def get_error(self):
         import refine
         path = self.filebase + ".csv"
@@ -152,6 +207,7 @@ class Job:
         except (FileNotFoundError, ZeroDivisionError):
             return float('inf')
 
+    @needload
     def task_size(self):
         curr = self.output_count()
         if 'count' in self.target:
@@ -168,6 +224,7 @@ class Job:
                 return 0
             return max(min(chunk, limit-curr), 0)
 
+    @needload
     def can_run(self):
         if 'cpu' in self.reqs:
             min_cpu = self.reqs['cpu']
@@ -191,6 +248,7 @@ class Job:
             finally:
                 fcntl.lockf(fd, fcntl.LOCK_UN)
 
+    @needload
     def status(self):
         host = socket.gethostname()
         cpuu = ''
@@ -224,6 +282,26 @@ class Job:
         if disp:
             print('%s: %s' % (self.path, s_))
 
+    def get_status(self):
+        status = "QUEUED"
+        cached = ""
+        try:
+            with open(self.path_stat) as f:
+                cached = f.read()
+        except FileNotFoundError:
+            pass
+
+        try:
+            with self.lock():
+                if cached:
+                    status = "HALTED"
+        except Job.LockedOut:
+            status = "ACTIVE"
+
+        return '[%s] %s' % (status, cached)
+
+
+    @needload
     def execute(self):
         if not self.can_run():
             return
@@ -261,7 +339,7 @@ def run_job(job, path):
     except Job.TryAgain:
         return False
 
-
+@no_zombies
 def handler_run(args):
     # first, set highest nice level to be cooperative
     # on a shared server, unless explicitly told it's ok
@@ -294,32 +372,27 @@ def handler_run(args):
 
 
 if __name__ == '__main__':
-    os.setpgrp()
-    try:
+    parser = argparse.ArgumentParser(description="")
+    parser.add_argument('-q', default='./queue',
+                        help="queue directory")
+    subparsers = parser.add_subparsers(title='commands', help='run with -h for more info')
+    parser.set_defaults(handler=handler_help(parser))
 
-        parser = argparse.ArgumentParser(description="")
-        parser.add_argument('-q', default='./queue',
-                            help="queue directory")
-        subparsers = parser.add_subparsers(title='commands', help='run with -h for more info')
-        parser.set_defaults(handler=handler_help(parser))
+    parser_enq = subparsers.add_parser('enqeue')
+    parser_enq.set_defaults(handler=handler_enq)
+    
+    parser_stat = subparsers.add_parser('status')
+    parser_stat.add_argument('-n', '--interval', default=None, type=float,
+                             help="repeat at interval")
+    parser_stat.set_defaults(handler=handler_stat)
+    
+    parser_run = subparsers.add_parser('run')
+    parser_run.add_argument('--mean', default=False, action='store_true',
+                            help="don't run nicely (e.g. hpc allocation)")
+    parser_run.add_argument('--inf', default=False, action='store_true',
+                            help="run indefinitely")
+    parser_run.add_argument('jobset', nargs='*')
+    parser_run.set_defaults(handler=handler_run)
 
-        parser_enq = subparsers.add_parser('enqeue')
-        parser_enq.set_defaults(handler=handler_enq)
-        
-        parser_stat = subparsers.add_parser('status')
-        parser_stat.set_defaults(handler=handler_stat)
-        
-        parser_run = subparsers.add_parser('run')
-        parser_run.add_argument('--mean', default=False, action='store_true',
-                                help="don't run nicely (e.g. hpc allocation)")
-        parser_run.add_argument('--inf', default=False, action='store_true',
-                                help="run indefinitely")
-        parser_run.add_argument('jobset', nargs='*')
-        parser_run.set_defaults(handler=handler_run)
-
-        args = parser.parse_args()
-        args.handler(args)
-
-    except:
-        traceback.print_exc()
-        os.killpg(0, signal.SIGKILL)
+    args = parser.parse_args()
+    args.handler(args)
