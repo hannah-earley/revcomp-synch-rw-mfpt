@@ -7,17 +7,6 @@
     - enqueue
         - generate jobs by some formula
         - don't overwrite existinc jobs
-    - status
-        - loop over all jobs
-            - if lock file held, processing
-            - else maybe waiting, paused or done
-                - no .status file => waiting
-                - else confer with .status file
-            - print relevant status file info
-                - maybe .status should just be a single line of info to print...
-    - status email
-        - periodically send status update as email to designated email address
-        - simply use sendmail
 
 
 # Done
@@ -80,6 +69,17 @@
             - record hostname
             - periodically record psutil cpu_percent
             - job status info
+    - status
+        - loop over all jobs
+            - if lock file held, processing
+            - else maybe waiting, paused or done
+                - no .status file => waiting
+                - else confer with .status file
+            - print relevant status file info
+                - maybe .status should just be a single line of info to print...
+    - status email
+        - periodically send status update as email to designated email address
+        - simply use sendmail
 - job descriptor
     - options (job.sh)
         - string or array
