@@ -14,6 +14,7 @@ import argparse
 import traceback
 import multiprocessing
 import pathlib
+import email.message
 from functools import wraps
 
 EXT_JOB = '.job'
@@ -53,7 +54,7 @@ def get_stats(args):
         jobs.sort()
 
         if lvl:
-            print(sep*(lvl-1) + parts[-1] + ':')
+            outp += sep*(lvl-1) + parts[-1] + ':' + "\n"
         for job in jobs:
             jobn, ext = os.path.splitext(job)
             jobp = os.path.join(root, job)
@@ -61,13 +62,31 @@ def get_stats(args):
                 continue
 
             jobj = Job(job, jobp)
-            print(sep*lvl + jobn, ':', jobj.get_status())
+            outp += sep*lvl + jobn + ' : ' + jobj.get_status() + "\n"
+
+    return outp
 
 
 def handler_stat(args):
+    eml = args.email
     int_ = args.interval
     while True:
-        get_stats(args)
+        stats = get_stats(args)
+
+        print('[%s] ' % datetime.datetime.now(), end='')
+        if eml is None:
+            print()
+            print(stats)
+        else:
+            print('emailing to', eml, '...')
+            msg = email.message.EmailMessage()
+            msg['Subject'] = 'RWX Batch Update'
+            msg['From'] = 'wje25@maths.cam.ac.uk'
+            msg['To'] = eml
+            msg.set_content(stats)
+            p = subprocess.Popen(["/usr/sbin/sendmail", "-t", "-oi"], stdin=subprocess.PIPE)
+            p.communicate(msg.as_string())
+
         if not int_:
             break
         time.sleep(int_)
@@ -384,6 +403,9 @@ if __name__ == '__main__':
     parser_stat = subparsers.add_parser('status')
     parser_stat.add_argument('-n', '--interval', default=None, type=float,
                              help="repeat at interval")
+    parser_stat.add_argument('-e', '--email', default=None, type=str,
+                             nargs='?', const='wje25@cam.ac.uk',
+                             help="send stats by email")
     parser_stat.set_defaults(handler=handler_stat)
     
     parser_run = subparsers.add_parser('run')
