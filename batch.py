@@ -70,6 +70,7 @@ def get_stats(args):
 def handler_stat(args):
     eml = args.email
     int_ = args.interval
+    subj = 'Re: RWX Batch Update'
     while True:
         stats = get_stats(args)
 
@@ -80,7 +81,7 @@ def handler_stat(args):
         else:
             print('emailing to', eml, '...')
             msg = email.message.EmailMessage()
-            msg['Subject'] = 'RWX Batch Update'
+            msg['Subject'] = subj
             msg['From'] = 'RWX Batch <wje25@maths.cam.ac.uk>'
             msg['To'] = eml
             msg.set_content(stats)
