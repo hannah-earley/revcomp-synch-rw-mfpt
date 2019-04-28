@@ -18,6 +18,12 @@ import email.message
 from functools import wraps
 import importlib.util
 
+try:
+    import psutil
+    psutil_ = True
+except ImportError:
+    psutil_ = False
+
 EXT_JOB = '.job'
 EXT_STAT = '.status'
 
@@ -137,8 +143,7 @@ class ProcInfo:
         self.working = False
         self.perc = perc
 
-        try:
-            import psutil
+        if psutil_:
             self.proc = psutil.Process(pid)
             self.procs = {}
             self.update_procs()
@@ -147,10 +152,10 @@ class ProcInfo:
                     p.cpu_percent()
                 time.sleep(1)
             self.working = True
-        except ImportError:
-            pass
 
     def update_procs(self):
+        if not psutil_:
+            return
         procsn = {}
         try:
             for p in [self.proc] + self.proc.children(recursive=True):
