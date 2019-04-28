@@ -56,7 +56,8 @@ def handler_enq(args):
 
     for jobn,jobd in mod.generate():
         print(jobn)
-        jobp = os.path.join(jdir, jobn)
+        jobf = jobn + EXT_JOB
+        jobp = os.path.join(jdir, jobf)
         jobj = Job(jobn, jobp)
         save = lambda f: json.dump(jobd, f, sort_keys=True, indent=4)
 
