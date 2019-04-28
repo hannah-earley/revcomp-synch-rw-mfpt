@@ -321,7 +321,11 @@ class Job:
         else:
             cpus, cpup = pi.cpusp()
             if cpus is not None and cpup is not None:
-                cpuu = ' cpu:%.2f/%d (%.1f%%)' % (cpup/100.0,cpus,cpup/cpus)
+                cpuu = ' cpu:%.2f/%d' % (cpup/100.0,cpus)
+                try:
+                    cpuu += ' (%.1f%%)' % (cpup/cpus)
+                except ZeroDivisionError:
+                    pass
 
         stat = 'outs:%d' % n
         if 'count' in self.target:
