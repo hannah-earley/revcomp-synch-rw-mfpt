@@ -16,6 +16,7 @@ import multiprocessing
 import pathlib
 import email.message
 from functools import wraps
+import importlib.util
 
 EXT_JOB = '.job'
 EXT_STAT = '.status'
@@ -40,7 +41,43 @@ def handler_help(parser):
 def handler_none(args):
     raise NotImplementedError
 
-handler_enq = handler_none
+def handler_enq(args):
+    qdir = args.q
+    jset = args.jobset
+    tmpl = args.template
+    jdir = os.path.join(qdir, jset)
+    jtpl = os.path.join(jdir, tmpl)
+
+    spec = importlib.util.spec_from_file_location("template", jtpl)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    jobbs = set()
+
+    for jobn,jobd in mod.generate():
+        print(jobn)
+        jobp = os.path.join(jdir, jobn)
+        jobj = Job(jobn, jobp)
+        save = lambda f: json.dump(jobd, f, sort_keys=True, indent=4)
+
+        jobb = jobj.filebase(jobd['options'])
+        if jobb in jobbs:
+            print("  Job would refer to duplicate data file!: %s" % jobb)
+            continue
+        jobbs.add(jobb)
+
+        try:
+            with open(jobp, 'x') as f:
+                save(f)
+        except FileExistsError:
+            try:
+                with jobj.lock() as f:
+                    f.truncate()
+                    save(f)
+            except Job.LockedOut:
+                with open(jobp, 'r') as f:
+                    if json.load(f) != jobj:
+                        print("  Can't update -- job being executed!" % jobn)
 
 def get_stats(args):
     outp = ""
@@ -183,7 +220,7 @@ class Job:
         if 'skip' in self.target:
             self.skip = self.target['skip']
 
-        self.filebase = self._get_filebase()
+        self.filebase = self.filebase(self.opts)
         self.loaded = True
 
     def needload(f):
@@ -193,14 +230,15 @@ class Job:
             return f(self, *args, **kwargs)
         return wrapped
 
-    def _get_filebase(self):
-        opts = ['./job.sh'] + self.opts + ['-P', '-i', '0']
+    @classmethod
+    def filebase(cls, opts):
+        opts = ['./job.sh'] + opts + ['-P', '-i', '0']
         outp = subprocess.Popen(opts, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         sout, serr = outp.communicate()
         lines = sout.decode().strip().split('\n')
-        assert len(lines) == 1, "Job.get_filebase: Invalid output from ./job.sh"
+        assert len(lines) == 1, "Job.filebase: Invalid output from ./job.sh"
         base = lines[0].strip()
-        assert base, "Job.get_filebase: No file base found"
+        assert base, "Job.filebase: No file base found"
         return base
 
     @needload
@@ -265,7 +303,7 @@ class Job:
                 raise Job.LockedOut()
 
             try:
-                yield
+                yield fh
             finally:
                 fcntl.lockf(fd, fcntl.LOCK_UN)
 
@@ -372,7 +410,7 @@ def handler_run(args):
     sets = args.jobset
     if not sets:
         sets = ['']
-    setdirs = [qdir + '/' + set_ for set_ in sets]
+    setdirs = [os.path.join(qdir, set_) for set_ in sets]
 
     again = True
     visited = set()
@@ -399,10 +437,12 @@ if __name__ == '__main__':
     subparsers = parser.add_subparsers(title='commands', help='run with -h for more info')
     parser.set_defaults(handler=handler_help(parser))
 
-    parser_enq = subparsers.add_parser('enqeue')
+    parser_enq = subparsers.add_parser('enqeue', aliases=['enq'])
+    parser_enq.add_argument('jobset')
+    parser_enq.add_argument('--template', default='template.py')
     parser_enq.set_defaults(handler=handler_enq)
     
-    parser_stat = subparsers.add_parser('status')
+    parser_stat = subparsers.add_parser('status', aliases=['stat'])
     parser_stat.add_argument('-n', '--interval', default=None, type=float,
                              help="repeat at interval")
     parser_stat.add_argument('-e', '--email', default=None, type=str,

@@ -21,7 +21,7 @@ def dat_count(dat, n_=None):
                 if line:
                     n += 1
     except FileNotFoundError:
-        print('Data file not found: %s', dat)
+        print('Data file not found: %s' % dat)
         return n_
 
     if n != n_:
