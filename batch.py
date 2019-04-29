@@ -287,6 +287,19 @@ class Job:
             return float('inf')
 
     @needload
+    def get_times(self):
+        import rawfine
+        pin = self.filebase + ".log"
+        pdat = self.filebase + ".dat"
+        try:
+            for rec in rawfine.read_log(pin, pdat): pass
+            _, est_time = rec['wall_']
+            prog = rec['prog']
+            return prog, est_time
+        except:
+            return '??%', '??'
+
+    @needload
     def task_size(self):
         curr = self.output_count()
         if 'count' in self.target:
@@ -363,7 +376,12 @@ class Job:
         if 'prec' in self.target:
             stat += '/%g' % self.target['prec']
 
-        return '%s [%s]%s %s' % (datetime.datetime.now(),host,cpuu,stat)
+        prog, wall = self.get_times()
+        stat += ' prog:%s ~time:%s' % (prog,wall)
+
+        now = datetime.datetime.now()
+        ts = now.strftime('%y-%m-%d %H:%M')
+        return '%s [%s]%s %s' % (ts,host,cpuu,stat)
 
     def record_status(self, msg='RUNNING', disp=False):
         s = self.status()

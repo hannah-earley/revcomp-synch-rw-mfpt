@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 import os.path
 import argparse
+import datetime
 import re
 
 open_mode = 'x'
 mean_re = re.compile(r'^mean:([0-9.e+-]+) \(±([0-9.e+-]+)\) var:([0-9.e+-]+)$')
+syst_re = re.compile(r'^(CPU|Wall): +(.*) \((.*)\)$')
+real_re = re.compile(r'^Real: (.*) - (.*)$')
+real_fmt = '%H:%M:%S %d/%m/%y'
+unit_durs = {'y':365*86400,'d':86400,'h':3600,'m':60,'s':1,
+             'ms':1e-3,'us':1e-6,'ns':1e-9,'ps':1e-12,
+             'fs':1e-15,'as':1e-18,'zs':1e-21,'ys':1e-24}
 
 def dat_count(dat, n_=None):
     n = 0
@@ -28,17 +35,26 @@ def dat_count(dat, n_=None):
         print("Possibly corrupt: %s (%d)" % (dat,n))
     return n
 
-def rawfine(fin, fout, dat=None):
-    n = None
-    m = None
-    s = None
+def parse_duration(s):
+    toks = s.split()
+    vals = toks[0::2]
+    units = toks[1::2]
+    return sum(float(v) * unit_durs[u] for v,u in zip(vals, units))
+
+def read_log(fin, dat=None):
+    outp = {
+        'n':None, 'm':None, 's':None,
+        'mean':None, 'var':None, 'err':None,
+        'dur':None, 'prog':None,
+        'wall':(None,None), 'cpu':(None,None)
+    }
+    outq = None
 
     if dat is not None:
-        n = dat_count(dat, n)
+        outp['n'] = dat_count(dat, outp['n'])
 
     try:
-        with open(fin, 'r') as hin, open(fout, open_mode) as hout:
-            hout.write('#mean,stderr,weight\n')
+        with open(fin, 'r') as hin:
 
             for line in hin:
                 line = line.strip()
@@ -47,24 +63,67 @@ def rawfine(fin, fout, dat=None):
                 if len(fields) == 2:
                     key, val = fields
                     if key == 'Walker Count':
-                        n = int(val)
+                        outp['n'] = int(val)
                     if key == 'Measurement Count':
-                        m = int(val)
+                        outp['m'] = int(val)
                     if key == 'Sample Window':
-                        s = int(val)
+                        outp['s'] = int(val)
                     if key == 'Persisting to':
                         dat = val
-                        n = dat_count(dat, n)
+                        outp['n'] = dat_count(dat, outp['n'])
 
                 if line.startswith('mean:'):
                     matches = mean_re.match(line)
-                    its = n * m * s
-                    mean = float(matches.group(1))
-                    err = float(matches.group(2))
-                    var = float(matches.group(3))
-                    mean_ = 1 / mean
-                    err_ = err * mean_ * mean_
-                    hout.write('%r,%r,%d\n' % (mean_, err_, its))
+                    outp['mean'] = float(matches.group(1))
+                    outp['err'] = float(matches.group(2))
+                    outp['var'] = float(matches.group(3))
+
+                    if outq:
+                        yield outq
+                    outq = outp.copy()
+
+                elif line.startswith('Real:'):
+                    matches = real_re.match(line)
+                    t0 = datetime.datetime.strptime(matches.group(1), real_fmt)
+                    t1 = datetime.datetime.strptime(matches.group(2), real_fmt)
+                    outq['dur'] = outp['dur'] = t1 - t0
+
+                elif line.startswith('CPU:') or line.startswith('Wall:'):
+                    matches = syst_re.match(line)
+                    type_ = matches.group(1).lower()
+                    type__ = type_ + '_'
+                    loop_ = matches.group(2)
+                    tot_ = matches.group(3)
+                    loop = parse_duration(loop_)
+                    tot = parse_duration(tot_)
+                    outq[type_] = outp[type_] = (loop, tot)
+                    outq[type__] = outp[type__] = (loop_, tot_)
+
+                elif line.startswith('0%..'):
+                    progs = line.split('..')
+                    try:
+                        if   progs[-1]: outp['prog'] = progs[-1]
+                        elif progs[-2]: outp['prog'] = progs[-2]
+                    except IndexError:
+                        pass
+
+            if outq:
+                yield outq
+            if outp != outq:
+                yield outp
+
+    except FileExistsError:
+        print('%s: Refusing to overwrite %s' % (fin, fout))
+
+def rawfine(fin, fout, dat=None):
+    try:
+        with open(fout, open_mode) as hout:
+            hout.write('#mean,stderr,weight\n')
+            for result in read_log(fin, dat):
+                mean = 1 / result['mean']
+                err = result['err'] * mean * mean
+                its = result['n'] * result['m'] * result['s']
+                hout.write('%r,%r,%d\n' % (mean, err, its))
 
     except FileExistsError:
         print('%s: Refusing to overwrite %s' % (fin, fout))
@@ -75,6 +134,7 @@ if __name__ == '__main__':
                         help='new extension')
     parser.add_argument('-f', default=False, action='store_true',
                         help='overwrite if exists')
+    parser.add_argument('--dry', default=False, action='store_true')
     parser.add_argument('file', nargs='*',
                         help='(dirty) log file')
 
@@ -88,4 +148,9 @@ if __name__ == '__main__':
         fbase,_ = os.path.splitext(fin)
         fout = fbase + '.' + ext
         fdat = fbase + '.dat'
-        rawfine(fin, fout, fdat)
+
+        if args.dry:
+            for result in read_log(fin, fdat):
+                print(result)
+        else:
+            rawfine(fin, fout, fdat)
