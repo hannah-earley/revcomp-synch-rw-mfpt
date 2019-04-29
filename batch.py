@@ -302,7 +302,7 @@ class Job:
 
             if (curr >= min_ and err < prec) or curr >= max_:
                 return 0
-            return max(min(chunk, max_-curr), min_)
+            return max(min(chunk, max_-curr), 0)
 
     @needload
     def can_run(self):
