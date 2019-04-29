@@ -375,7 +375,6 @@ class Job:
         if not self.can_run():
             return
         with self.lock():
-            self.record_status(msg='INITIALISING')
             started = False
             while True:
                 todo = self.task_size()
@@ -384,6 +383,7 @@ class Job:
                         self.record_status(msg='DONE')
                     return True
                 started = True
+                self.record_status(msg='INITIALISING')
 
                 args = ["./job.sh"] + self.opts + ["-i", str(todo)]
                 dn = subprocess.DEVNULL
