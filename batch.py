@@ -281,10 +281,10 @@ class Job:
         path = self.filebase + ".csv"
         try:
             with open(path, 'r') as f:
-                _, err = refine.refine(f, self.skip)
-                return err
+                mean, err = refine.refine(f, self.skip)
+                return mean, err
         except (FileNotFoundError, ZeroDivisionError):
-            return float('inf')
+            return float('nan'), float('inf')
 
     @needload
     def get_times(self):
@@ -311,7 +311,7 @@ class Job:
             min_ = self.target.get('min', 0)
             max_ = self.target.get('max', float('inf'))
             prec = self.target['prec']
-            err = self.get_error()
+            _, err = self.get_error()
 
             if (curr >= min_ and err < prec) or curr >= max_:
                 return 0
@@ -371,7 +371,8 @@ class Job:
             if 'max' in self.target:
                 stat += '/%d' % self.target['max']
 
-        err = self.get_error()
+        mean, err = self.get_error()
+        stat += ' curr:%g' % mean
         stat += ' err:%g' % err
         if 'prec' in self.target:
             stat += '/%g' % self.target['prec']
