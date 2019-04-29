@@ -84,7 +84,7 @@ def handler_enq(args):
             except Job.LockedOut:
                 with open(jobp, 'r') as f:
                     if json.load(f) != jobj:
-                        print("  Can't update -- job being executed!" % jobn)
+                        print("  Can't update -- job being executed!")
 
 def get_stats_(jsdir, base):
     outp = ""
