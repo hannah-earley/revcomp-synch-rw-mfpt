@@ -86,19 +86,22 @@ def handler_enq(args):
                     if json.load(f) != jobj:
                         print("  Can't update -- job being executed!" % jobn)
 
-def get_stats(args):
+def get_stats_(jsdir, base):
     outp = ""
-    qdir = args.q
     sep = '  '
 
-    for root, _, jobs in os.walk(args.q):
-        path = pathlib.PurePath(root).relative_to(qdir)
+    for root, _, jobs in os.walk(jsdir):
+        path = pathlib.PurePath(root).relative_to(jsdir)
         parts = path.parts
         lvl = len(parts)
         jobs.sort()
 
         if lvl:
-            outp += sep*(lvl-1) + parts[-1] + ':' + "\n"
+            if parts[-1] == '__pycache__':
+                continue
+            outp += sep*lvl + parts[-1] + ':' + "\n"
+        else:
+            outp += base + ':' + "\n"
         for job in jobs:
             jobn, ext = os.path.splitext(job)
             jobp = os.path.join(root, job)
@@ -106,9 +109,20 @@ def get_stats(args):
                 continue
 
             jobj = Job(job, jobp)
-            outp += sep*lvl + jobn + ' : ' + jobj.get_status() + "\n"
+            outp += sep*(lvl+1) + jobn + ' : ' + jobj.get_status() + "\n"
 
     return outp
+
+def get_stats(args):
+    qdir = args.q
+    sets = args.jobset
+    if not sets:
+        return get_stats_(qdir, 'queue')
+    else:
+        outp = ""
+        for set_ in sets:
+            outp += get_stats_(os.path.join(qdir, set_), set_)
+        return outp
 
 
 def handler_stat(args):
@@ -281,13 +295,14 @@ class Job:
 
         elif 'chunk' in self.target:
             chunk = self.target['chunk']
-            limit = self.target['limit']
+            min_ = self.target.get('min', 0)
+            max_ = self.target.get('max', float('inf'))
             prec = self.target['prec']
             err = self.get_error()
 
-            if err < prec or curr >= limit:
+            if (curr >= min_ and err < prec) or curr >= max_:
                 return 0
-            return max(min(chunk, limit-curr), 0)
+            return max(min(chunk, max_-curr), min_)
 
     @needload
     def can_run(self):
@@ -316,6 +331,9 @@ class Job:
     @needload
     def status(self):
         host = socket.gethostname()
+        if len(host) > 25:
+            host = host[:22] + '...'
+
         cpuu = ''
         n = self.output_count()
 
@@ -337,9 +355,13 @@ class Job:
             stat += '/%d' % self.target['count']
         elif 'chunk' in self.target:
             prec = self.target['prec']
-            err = self.get_error()
-            stat += '/%d' % self.target['limit']
-            stat += ' err:%g/%g' % (err,prec)
+            if 'max' in self.target:
+                stat += '/%d' % self.target['max']
+
+        err = self.get_error()
+        stat += ' err:%g' % err
+        if 'prec' in self.target:
+            stat += '/%g' % self.target['prec']
 
         return '%s [%s]%s %s' % (datetime.datetime.now(),host,cpuu,stat)
 
@@ -461,6 +483,7 @@ if __name__ == '__main__':
     parser_stat.add_argument('-e', '--email', default=None, type=str,
                              nargs='?', const='wje25@cam.ac.uk',
                              help="send stats by email")
+    parser_stat.add_argument('jobset', nargs='*')
     parser_stat.set_defaults(handler=handler_stat)
     
     parser_run = subparsers.add_parser('run')
