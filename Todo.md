@@ -1,14 +1,5 @@
 # Todo
 
-## `./walk`
-
-## `./batch.py`
-- batch tool
-    - enqueue
-        - generate jobs by some formula
-        - don't overwrite existinc jobs
-
-
 # Done
 
 ## `./walk`
@@ -34,6 +25,8 @@
     - when a thread completes its share, print a , (?)
 - persistent data should end with a comment `# eof`
     - else assume error and die...
+- hpc checkpointing
+    - listen for sigterm and checkpoint early
 
 ## `./job.sh`
 - pass through most options
@@ -80,6 +73,9 @@
     - status email
         - periodically send status update as email to designated email address
         - simply use sendmail
+    - enqueue
+        - generate jobs by some formula
+        - don't overwrite existinc jobs
 - job descriptor
     - options (job.sh)
         - string or array
