@@ -1,5 +1,6 @@
 #include <chrono>
 #include <signal.h>
+#include <vector>
 
 double LambertW0(double x, const double acc=1e-15);
 unsigned stou(std::string const& str, size_t* idx=0, int base=10);
@@ -53,5 +54,38 @@ public:
 
     ~Uninterruptable() {
         sigaction(SIGINT, &old_act, NULL);
+    }
+};
+
+class Unterminable {
+    sigset_t oldmask, newmask;
+    std::vector<int> signals;
+
+public:
+    Unterminable(std::vector<int> signals) : signals(signals) {
+        sigemptyset(&newmask);
+        for (int signal : signals)
+            sigaddset(&newmask, signal);
+        sigprocmask(SIG_BLOCK, &newmask, &oldmask);
+    }
+
+    Unterminable() : Unterminable({SIGINT, SIGTERM}) {}
+
+    int poll() {
+        sigset_t sigpend;
+        sigpending(&sigpend);
+        for (int signal : signals) {
+            if (sigismember(&sigpend, signal)) {
+                int sigret;
+                if (sigwait(&newmask, &sigret) == 0)
+                    return sigret;
+                break;
+            }
+        }
+        return false;
+    }
+
+    ~Unterminable() {
+        sigprocmask(SIG_SETMASK, &oldmask, NULL);
     }
 };
