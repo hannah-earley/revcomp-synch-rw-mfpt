@@ -5,6 +5,7 @@ import datetime
 import re
 
 open_mode = 'x'
+its_re = re.compile(r'^its: +([0-9]+)$')
 mean_re = re.compile(r'^mean:([0-9.e+-]+) \(±([0-9.e+-]+)\) var:([0-9.e+-]+)$')
 syst_re = re.compile(r'^(CPU|Wall): +(.*) \((.*)\)$')
 real_re = re.compile(r'^Real: (.*) - (.*)$')
@@ -43,7 +44,7 @@ def parse_duration(s):
 
 def read_log(fin, dat=None):
     outp = {
-        'n':None, 'm':None, 's':None,
+        'n':None, 'm':None, 's':None, 'its':None,
         'mean':None, 'var':None, 'err':None,
         'dur':None, 'prog':None,
         'wall':(None,None), 'cpu':(None,None)
@@ -72,6 +73,10 @@ def read_log(fin, dat=None):
                         dat = val
                         outp['n'] = dat_count(dat, outp['n'])
 
+                if line.startswith('its:'):
+                    matches = its_re.match(line)
+                    outp['its'] = int(matches.group(1))
+
                 if line.startswith('mean:'):
                     matches = mean_re.match(line)
                     outp['mean'] = float(matches.group(1))
@@ -81,6 +86,7 @@ def read_log(fin, dat=None):
                     if outq:
                         yield outq
                     outq = outp.copy()
+                    outp['its'] = None
 
                 elif line.startswith('Real:'):
                     matches = real_re.match(line)
@@ -110,7 +116,11 @@ def read_log(fin, dat=None):
             if outq:
                 yield outq
             if outp != outq:
-                yield outp
+                o1 = outp.copy()
+                o2 = outq.copy()
+                o1['its'] = o2['its']
+                if o1 != o2:
+                    yield outp
 
     except FileExistsError:
         print('%s: Refusing to overwrite %s' % (fin, fout))
@@ -122,7 +132,9 @@ def rawfine(fin, fout, dat=None):
             for result in read_log(fin, dat):
                 mean = 1 / result['mean']
                 err = result['err'] * mean * mean
-                its = result['n'] * result['m'] * result['s']
+                its = result['its']
+                if its is None:
+                    its = result['n'] * result['m'] * result['s']
                 hout.write('%r,%r,%d\n' % (mean, err, its))
 
     except FileExistsError:
