@@ -64,7 +64,7 @@ int sigpoll(sigset_t *sigmask) {
 
 void testbed() {
     signal(SIGINT, handler);
-    sigset_t sigmask,oldmask,sigpend;
+    sigset_t sigmask,oldmask; //,sigpend;
     // struct timespec poll = {0,0};
 
     sigemptyset(&sigmask);
@@ -93,7 +93,7 @@ void testbed() {
                 //     printf("received sigterm\n");
                 //     cont = false;
                 // }
-                int caught = sigpoll(&sigpend);
+                int caught = sigpoll(&sigmask);
                 if (caught >= 0) {
                     printf("caught: %d\n", caught);
                     cont = false;

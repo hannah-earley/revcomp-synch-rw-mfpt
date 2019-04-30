@@ -19,6 +19,9 @@
 bool VERBOSE_MODE = false;
 #define VERBOSE if (VERBOSE_MODE)
 
+bool DYING = false;
+size_t DEATH_CHECK = 100000000;
+
 //// walk config
 
 struct WalkConfig {
@@ -119,20 +122,33 @@ pcg32 &omp_thread_rng(std::vector<pcg32>& rngs) {
     return rngs[omp_get_thread_num()];
 }
 
-template <typename S, typename F>
+template <typename S, typename E, typename F>
 Stats ensemble_walk(std::vector<S>& walkers,
                     WalkConfig wc,
                     std::vector<pcg32>& rngs,
-                    F step_fn)
+                    size_t& its,
+                    F step_fn,
+                    E step_env)
 {
+    // catch sigint, sigterm...
+    Unterminable unterm;
+    int sig;
+
+    its = 0;
     size_t n = walkers.size();
     std::vector<size_t> rs(wc.ensemble_count, 0);
     std::vector<double> js(wc.ensemble_count, 0);
+    std::vector<size_t> ns(wc.ensemble_count, 0);
 
     #pragma omp parallel
     {
         pcg32& rng = omp_thread_rng(rngs);
         std::vector<size_t> rs_loc(wc.ensemble_count, 0);
+        std::vector<size_t> ns_loc(wc.ensemble_count, 0);
+        size_t its_loc = 0,
+               ensemble_count = wc.ensemble_count,
+               sample_window = wc.sample_window,
+               death_check = DEATH_CHECK;
 
         // progress
         size_t progress_its = 0;
@@ -142,6 +158,8 @@ Stats ensemble_walk(std::vector<S>& walkers,
 
         #pragma omp for
         for (size_t i = 0; i < n; i++) {
+            if (DYING) continue;
+
             // progress (only from master)
             VERBOSE if (thread == 0) {
                 if (progress_its == 0) {
@@ -155,33 +173,58 @@ Stats ensemble_walk(std::vector<S>& walkers,
                 }
             }
 
-            for (size_t j = 0; j < wc.ensemble_count; j++) {
+            S walker = walkers[i];
+            for (size_t j = 0; j < ensemble_count; j++) {
                 size_t r = 0;
-                for (size_t t = 0; t < wc.sample_window; t++)
-                    step_fn(walkers[i], rng, r);
+                for (size_t t = 0; t < sample_window; t++, its_loc++)
+                    step_fn(walker, rng, r, step_env);
                 rs_loc[j] += r;
+                ns_loc[j]++;
+
+                // death
+                if (its_loc % death_check == 0) {
+                    if (thread == 0 && (sig = unterm.poll()) > 0) {
+                        std::cout << "got interrupt (" << sig << ")...";
+                        DYING = true;
+                    }
+
+                    if (DYING) break;
+                }
             }
+            walkers[i] = walker;
         }
 
-        for (size_t j = 0; j < wc.ensemble_count; j++) {
+        for (size_t j = 0; j < ensemble_count; j++) {
             #pragma omp atomic
             rs[j] += rs_loc[j];
+            #pragma omp atomic
+            ns[j] += ns_loc[j];
         }
 
+        #pragma omp atomic
+        its += its_loc;
+
         // progress (only from master)
-        VERBOSE if (thread == 0) {
+        VERBOSE if (thread == 0 && !DYING) {
             std::cout << "100%" << std::flush;
         }
+    }
+
+    // death
+    if ((sig = unterm.poll()) > 0) {
+        std::cout << "got interrupt (" << sig << ")...";
+        DYING = true;
     }
 
     // progress
     VERBOSE std::cout << std::endl;
 
     for (size_t i = 0; i < wc.ensemble_count; i++)
-        js[i] = (double)rs[i] / (double)n / (double) wc.sample_window;
+        js[i] = (double)rs[i] / (double)ns[i] / (double) wc.sample_window;
 
     Stats j(js);
-    j.store(wc.out_filename, wc.iterations());
+    j.store(wc.out_filename, its);
+    std::cout << "its:  " << its << std::endl;
     return j.pow(-1);
 }
 
@@ -275,29 +318,41 @@ void mfpt1d_seed(double bias, std::vector<S>& ensemble) {
 }
 
 template <typename S>
-void mfpt1d(double bias, S init, WalkConfig wc) {
-    S term = 0;
-    double p = 0.5 * (1 + bias);
-    std::bernoulli_distribution fwd(p);
+struct Params1D {
+    S init, term;
+    double bias, p;
+    std::bernoulli_distribution fwd;
 
-    std::vector<S> ensemble(wc.n, init);
+    Params1D(S init, double bias) :
+        init(init), term(0),
+        bias(bias), p(0.5 * (1+bias)),
+        fwd(p)
+    {}
+};
+
+template <typename S>
+void mfpt1d(double bias, S init, WalkConfig wc) {
+    Params1D<S> params(init, bias);
+
+    std::vector<S> ensemble(wc.n, params.init);
     if (bias > 0) mfpt1d_seed(bias, ensemble);
     std::vector<pcg32> rngs;
 
     PersistentVector<S> pv(wc);
     pv.maybe_load(ensemble);
 
-    for (size_t loopi = 0; loopi < wc.loop_count; loopi++) {
+    for (size_t loopi = 0; !DYING && loopi < wc.loop_count; loopi++) {
+        size_t its;
         SimTimer bench;
-        std::cout << ensemble_walk(ensemble, wc, rngs,
-        [&](S& w, pcg32& rng, size_t& r) {
-            w += fwd(rng) ? 1 : -1;
-            if (w >= term) {
-                w = init;
+        std::cout << ensemble_walk(ensemble, wc, rngs, its,
+        [](S& w, pcg32& rng, size_t& r, Params1D<S>& params) {
+            w += params.fwd(rng) ? 1 : -1;
+            if (w >= params.term) {
+                w = params.init;
                 r++;
             }
-        });
-        VERBOSE bench.report(wc.iterations());
+        }, params);
+        VERBOSE bench.report(its);
         pv.store(ensemble);
     }
 }
@@ -324,7 +379,7 @@ struct QuadWalkStepDistr32 {
         else pt = pt_;
     }
 
-    inline Step operator() (pcg32& g) {
+    inline Step operator() (pcg32& g) const {
         uint32_t r = g();
         return Step(pt >= r, (r & 1) == 1);
     }
@@ -413,33 +468,44 @@ void mfpt2d_seed(double bias, int width, std::vector<Coord2D>& ensemble) {
     }
 }
 
-void mfpt2d(double bias, uint init, uint width, WalkConfig wc) {
-    init = 1 - init - width;
-    int term = 1 - width;
-    std::uniform_int_distribution<int> init_dist(0,-init);
+struct Params2D {
+    const uint init;
+    const int term;
+    std::uniform_int_distribution<int> init_dist;
+    double bias, p;
+    QuadWalkStepDistr32 step;
 
-    double p = 0.5 * (1 + bias);
-    QuadWalkStepDistr32 step(p);
+    Params2D(uint init, int term, double bias) :
+        init(init), term(term),
+        init_dist(0,-init),
+        bias(bias), p(0.5 * (1+bias)),
+        step(p)
+    {}
+};
 
-    std::vector<Coord2D> ensemble(wc.n, Coord2D(init,0));
+void mfpt2d(double bias, uint init_, uint width, WalkConfig wc) {
+    Params2D params(1 - init_ - width, 1 - width, bias);
+
+    std::vector<Coord2D> ensemble(wc.n, Coord2D(params.init,0));
     if (bias > 0) mfpt2d_seed(bias, width, ensemble);
     std::vector<pcg32> rngs;
 
     PersistentVector<Coord2D> pv(wc);
     pv.maybe_load(ensemble);
 
-    for (size_t loopi = 0; loopi < wc.loop_count; loopi++) {
+    for (size_t loopi = 0; !DYING && loopi < wc.loop_count; loopi++) {
+        size_t its;
         SimTimer bench;
-        std::cout << ensemble_walk(ensemble, wc, rngs,
-        [&](Coord2D& w, pcg32& rng, size_t& r) {
-            w.move_ql(step(rng));
-            if (w.x >= term) {
-                w.x = init;
-                w.y = init_dist(rng);
+        std::cout << ensemble_walk(ensemble, wc, rngs, its,
+        [](Coord2D& w, pcg32& rng, size_t& r, Params2D& params) {
+            w.move_ql(params.step(rng));
+            if (w.x >= params.term) {
+                w.x = params.init;
+                w.y = params.init_dist(rng);
                 r++;
             }
-        });
-        VERBOSE bench.report(wc.iterations());
+        }, params);
+        VERBOSE bench.report(its);
         pv.store(ensemble);
     }
 }
