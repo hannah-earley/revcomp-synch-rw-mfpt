@@ -446,12 +446,13 @@ void mfpt2d(double bias, uint init, uint width, WalkConfig wc) {
 
 //// cli interface
 
-enum Simulation { WALK_1D, WALK_2D, UNITEST };
+enum Simulation { WALK_1D, WALK_2D, UNITEST, TESTBED };
 std::ostream& operator<< (std::ostream &os, const Simulation &sim) {
     switch (sim) {
         case WALK_1D: return os << "MFPT - 1D Walk";
         case WALK_2D: return os << "MFPT - 2D Walk (Constrained/Quadrant)";
         case UNITEST: return os << "Unit Tests";
+        case TESTBED: return os << "Test Bed...";
     }
     return os << "???";
 }
@@ -510,6 +511,8 @@ int unit_tests() {
     return 0;
 }
 
+#include "testbed.cpp"
+
 int main(int argc, char *argv[]) {
     std::cout.precision(12);
     std::cerr.precision(12);
@@ -529,7 +532,7 @@ int main(int argc, char *argv[]) {
     };
 
     int c;
-    while ((c = getopt(argc, argv, "12tvh?b:w:n:d:p:q:m:s:x:i:")) != -1) switch(c) {
+    while ((c = getopt(argc, argv, "129tvh?b:w:n:d:p:q:m:s:x:i:")) != -1) switch(c) {
         case '1':
             sim = WALK_1D;
             break;
@@ -538,6 +541,8 @@ int main(int argc, char *argv[]) {
             break;
         case 't':
             sim = UNITEST;
+        case '9':
+            sim = TESTBED;
         case 'v':
             VERBOSE_MODE = true;
             break;
@@ -616,6 +621,10 @@ int main(int argc, char *argv[]) {
 
         case UNITEST:
             unit_tests();
+            break;
+
+        case TESTBED:
+            testbed();
             break;
     }
 
