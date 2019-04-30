@@ -9,7 +9,7 @@ else
 endif
 OBDIR=obj
 
-DEPS=walk.h
+DEPS=walk.h testbed.cpp
 _OBJ=walk.o misc.o
 OBJ=$(patsubst %,$(OBDIR)/%,$(_OBJ))
 
