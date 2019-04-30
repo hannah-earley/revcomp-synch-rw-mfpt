@@ -1,6 +1,8 @@
 #include <stack>
 
-#ifdef SIGRTMAX
+#if defined _NSIG
+  #define NUM_SIGS _NSIG
+#elif defined SIGRTMAX
   #define NUM_SIGS SIGRTMAX
 #else
   #define NUM_SIGS 32
@@ -10,7 +12,7 @@ static std::stack<struct sigaction> oldactstack[NUM_SIGS];
 
 void ignore_once(int signum) {
     char buf[11]="interrupt\n";
-    write(1, buf, 10);
+    if (write(1, buf, 10) != 10);
     if (signum < NUM_SIGS && !oldactstack[signum].empty()) {
         struct sigaction oldact = oldactstack[signum].top();
         sigaction(signum, &oldact, NULL);
@@ -19,7 +21,7 @@ void ignore_once(int signum) {
 }
 
 void handler(int signum) {
-    write(1, "hello\n", 6);
+    if (write(1, "hello\n", 6) != 6);
 }
 
 int install_ign_once(int signum) {
