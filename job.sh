@@ -80,5 +80,18 @@ mkdir -p "$dir"
 echo "#" "$0" "$@" >> "$log"
 echo "#" ./walk "${argv[@]}" >> "$log"
 
-set -o pipefail
-./walk "${argv[@]}" 2>&1 | tee -a "$log"
+# run and catch errors and signals properly...
+
+_sig() { 
+  kill -TERM "$child"
+}
+
+spin() {
+    wait "$child" || spin
+}
+
+trap _sig SIGINT SIGTERM
+trap spin EXIT
+
+./walk "${argv[@]}" > >(tee -a "$log") 2>&1 &
+child=$!
