@@ -1,4 +1,4 @@
-ifeq (, $(shell which clang++))
+ifeq (, $(shell which clang++ 2>/dev/null))
     CXX=g++
     CXXFLAGS=-fopenmp -std=c++11 -O3 -Wall -Iinc/
     LINKFLAGS=
