@@ -1,5 +1,12 @@
 # Todo
 
+## `./batch.py`
+- on sigint/sigterm, first try to pass onto current walk instance (then die)
+- after multiple, sigkill it?
+
+## `./walk`
+- histogram/streaming mode for collecting many samples from ss distribution
+
 # Done
 
 ## `./walk`
@@ -32,6 +39,7 @@
 - pass through most options
 - just extract certain values for filename purposes...
 - and maybe automatically insert `-2v` ?
+- pass sigint,sigterm signals onto ./walk properly
 
 ## `./refine.py`
 - produce a refined measurement from the `-q` clean output

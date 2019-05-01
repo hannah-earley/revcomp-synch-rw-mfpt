@@ -123,7 +123,7 @@ pcg32 &omp_thread_rng(std::vector<pcg32>& rngs) {
 }
 
 #define POLLSIGS if ((sig = unterm.poll()) > 0) {\
-    std::cout << "...got interrupt(" << sig << ")...";\
+    std::cerr << "...got interrupt(" << sig << ")...";\
     DYING = true;\
 }
 
@@ -174,13 +174,13 @@ Stats ensemble_walk(std::vector<S>& walkers,
             // progress (only from master)
             VERBOSE if (thread == 0) {
                 if (progress_its == 0) {
-                    std::cout << "0%.." << std::flush;
+                    std::cerr << "0%.." << std::flush;
                 }
                 progress_its++;
                 size_t n10pc = (progress_its * 10) / progress_chunk;
                 while (progress_10pc < n10pc && progress_10pc < 9) {
                     progress_10pc++;
-                    std::cout << progress_10pc << "0%.." << std::flush;
+                    std::cerr << progress_10pc << "0%.." << std::flush;
                 }
             }
 
@@ -231,7 +231,7 @@ Stats ensemble_walk(std::vector<S>& walkers,
 
         // progress (only from master)
         VERBOSE if (thread == 0 && !DYING) {
-            std::cout << "100%" << std::flush;
+            std::cerr << "100%" << std::flush;
         }
     }
 
@@ -239,14 +239,14 @@ Stats ensemble_walk(std::vector<S>& walkers,
     POLLSIGS;
 
     // progress
-    VERBOSE std::cout << std::endl;
+    VERBOSE std::cerr << std::endl;
 
     for (size_t i = 0; i < wc.ensemble_count; i++)
         js[i] = (double)rs[i] / (double)ns[i] / (double) wc.sample_window;
 
     Stats j(js);
     j.store(wc.out_filename, its);
-    std::cout << "its:  " << its << std::endl;
+    std::cerr << "its:  " << its << std::endl;
     return j.pow(-1);
 }
 
@@ -282,7 +282,7 @@ struct PersistentVector {
             vec.push_back(read1(line));
         }
 
-        std::cout << "Corrupt persistent data file!" << std::endl;
+        std::cerr << "Corrupt persistent data file!" << std::endl;
         std::exit(1);
     }
 
