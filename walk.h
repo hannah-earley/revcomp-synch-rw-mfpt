@@ -82,7 +82,7 @@ public:
                 break;
             }
         }
-        return false;
+        return -1;
     }
 
     ~Unterminable() {
