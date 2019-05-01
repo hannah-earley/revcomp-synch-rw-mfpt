@@ -9,7 +9,7 @@ import datetime
 import fcntl
 import socket
 import subprocess
-import contextlib
+from contextlib import contextmanager
 import argparse
 import traceback
 import multiprocessing
@@ -17,6 +17,7 @@ import pathlib
 import email.message
 from functools import wraps
 import importlib.util
+import signal
 
 try:
     import psutil
@@ -37,6 +38,27 @@ def no_zombies(f):
             traceback.print_exc()
             os.killpg(0, signal.SIGKILL)
     return wrapped
+
+SIGNALLED = set()
+TO_SIGNAL = []
+def handle_signal(signum, stackframe):
+    global SIGNALLED, TO_SIGNAL
+    SIGNALLED.add(signum)
+    TO_REMOVE = []
+    for proc in TO_SIGNAL:
+        if proc.poll():
+            TO_REMOVE.append(proc)
+        proc.send_signal(signum)
+    for proc in TO_REMOVE:
+        TO_SIGNAL.remove(proc)
+@contextmanager
+def flag_signals(sigs=[signal.SIGINT, signal.SIGTERM]):
+    old = {}
+    for sig in set(sigs):
+        old[sig] = signal.signal(sig, handle_signal)
+    yield
+    for sig in sigs:
+        signal.signal(sig, old[sig])
 
 def handler_help(parser):
     def handler(args):
@@ -327,7 +349,7 @@ class Job:
                 return False
         return True
 
-    @contextlib.contextmanager
+    @contextmanager
     def lock(self):
         with open(self.path, 'r+') as fh:
             fd = fh.fileno()
@@ -415,9 +437,9 @@ class Job:
     def execute(self):
         if not self.can_run():
             return
-        with self.lock():
+        with self.lock(), flag_signals():
             started = False
-            while True:
+            while not SIGNALLED:
                 todo = self.task_size()
                 if todo <= 0:
                     if started:
@@ -430,15 +452,18 @@ class Job:
                 dn = subprocess.DEVNULL
                 self.proc = subprocess.Popen(args, stdout=dn, stderr=dn)
                 self.proc_info = ProcInfo(self.proc.pid)
+                TO_SIGNAL.append(self.proc)
                 i = 0
                 while True:
                     ret = self.proc.poll()
                     if ret is not None:
+                        # print('dead:',self.opts)
                         if ret > 0:
                             return
                         break
-                    self.record_status(disp=(i%6==0))
-                    time.sleep(10)
+                    if i % 10 == 0:
+                        self.record_status(disp=(i%60==0))
+                    time.sleep(1)
                     i += 1
                 del self.proc_info
 
@@ -482,6 +507,8 @@ def handler_run(args):
                         again = True
                     else:
                         visited.add(jobpath)
+                    if SIGNALLED:
+                        return
 
 
 if __name__ == '__main__':
