@@ -122,12 +122,12 @@ pcg32 &omp_thread_rng(std::vector<pcg32>& rngs) {
     return rngs[omp_get_thread_num()];
 }
 
-#define SIGPOLL if ((sig = unterm.poll()) > 0) {\
+#define POLLSIGS if ((sig = unterm.poll()) > 0) {\
     std::cout << "...got interrupt(" << sig << ")...";\
     DYING = true;\
 }
 
-#define if_SIGPOLL SIGPOLL if (sig > 0)
+#define if_POLLSIGS POLLSIGS if (sig > 0)
 
 template <typename S, typename E, typename F>
 Stats ensemble_walk(std::vector<S>& walkers,
@@ -194,7 +194,7 @@ Stats ensemble_walk(std::vector<S>& walkers,
 
                 // death
                 if (its_loc % death_check == 0) {
-                    if (thread == 0) SIGPOLL;
+                    if (thread == 0) POLLSIGS;
                     if (DYING) break;
                 }
             }
@@ -211,7 +211,7 @@ Stats ensemble_walk(std::vector<S>& walkers,
                 threads_done_loc = threads_done;
 
                 while (threads_done_loc < num_threads) {
-                    if_SIGPOLL break;
+                    if_POLLSIGS break;
                     sleep(1);
                     #pragma omp critical
                     threads_done_loc = threads_done;
@@ -236,7 +236,7 @@ Stats ensemble_walk(std::vector<S>& walkers,
     }
 
     // death
-    SIGPOLL;
+    POLLSIGS;
 
     // progress
     VERBOSE std::cout << std::endl;
