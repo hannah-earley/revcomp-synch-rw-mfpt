@@ -32,6 +32,7 @@ struct WalkConfig {
     size_t ensemble_count;
     size_t loop_count;
     std::string cmd;
+    bool streaming;
 
     double iterations() {
         return (double)n * (double)sample_window * (double)ensemble_count;
@@ -101,6 +102,85 @@ std::ostream& operator<<(std::ostream& os, const Stats &stats) {
               << " (±" << stats.error << ")"
               << " var:" << stats.variance()
               << std::endl;
+}
+
+//// persistence
+
+const char PV_EOF[] = "# eof";
+
+template<typename S>
+struct PersistentVector {
+    std::string filename_bak;
+    WalkConfig wc;
+
+    PersistentVector(WalkConfig wc) : wc(wc) {
+        filename_bak = wc.pv_filename + "~";
+    }
+
+    void maybe_load(std::vector<S>& vec) {
+        if (wc.pv_filename.empty())
+            return;
+        std::fstream fs;
+        std::string line;
+        fs.open(wc.pv_filename, std::ios_base::in);
+        if (!fs.is_open() || fs.eof())
+            return;
+
+        vec.clear();
+        while (std::getline(fs, line)) {
+            if (line[0] == '#') {
+                if (line == PV_EOF)
+                    return;
+                continue;
+            }
+            vec.push_back(read1(line));
+        }
+
+        std::cerr << "Corrupt persistent data file!" << std::endl;
+        std::exit(1);
+    }
+
+    void store(const std::vector<S>& vec) {
+        Uninterruptable unint;
+
+        if (wc.pv_filename.empty())
+            return;
+        backup();
+
+        std::fstream fs;
+        fs.open(wc.pv_filename, std::ios_base::out|std::ios_base::trunc);
+
+        fs << "# " << wc.cmd << std::endl;
+        for (const S& x : vec)
+            write1(fs, x);
+        fs << PV_EOF << std::endl;
+    }
+
+    void backup() {
+        std::fstream orig, bak;
+        std::string line;
+
+        orig.open(wc.pv_filename, std::ios_base::in);
+        if (!orig.is_open() || orig.eof())
+            return;
+
+        bak.open(filename_bak, std::ios_base::out|std::ios_base::trunc);
+        while (std::getline(orig, line))
+            bak << line << std::endl;
+    }
+
+    static S read1(std::string);
+    static std::ostream& write1(std::ostream&, const S&);
+
+};
+
+template<>
+int PersistentVector<int>::read1(std::string s) {
+    return std::stoi(s);
+}
+template<>
+std::ostream& PersistentVector<int>::write1(std::ostream& os, const int& n) {
+    return os << n << std::endl;
 }
 
 //// parallel walking routine
@@ -250,83 +330,82 @@ Stats ensemble_walk(std::vector<S>& walkers,
     return j.pow(-1);
 }
 
-//// persistence
+template <typename S, typename E, typename F>
+void streaming_walk(std::vector<S>& walkers,
+                    WalkConfig wc,
+                    std::vector<pcg32>& rngs,
+                    F step_fn,
+                    E step_env)
+{
+    Unterminable unterm;
+    int sig;
+    size_t n = walkers.size();
+    size_t threads_done = 0;
 
-const char PV_EOF[] = "# eof";
+    #pragma omp parallel
+    {
+        pcg32& rng = omp_thread_rng(rngs);
+        size_t its_loc = 0,
+               ensemble_count = wc.ensemble_count,
+               sample_window = wc.sample_window,
+               death_check = DEATH_CHECK;
 
-template<typename S>
-struct PersistentVector {
-    std::string filename_bak;
-    WalkConfig wc;
+        size_t num_threads = omp_get_num_threads();
+        size_t threads_done_loc;
+        int thread = omp_get_thread_num();
 
-    PersistentVector(WalkConfig wc) : wc(wc) {
-        filename_bak = wc.pv_filename + "~";
-    }
+        std::vector<S> history;
+        history.reserve(ensemble_count);
 
-    void maybe_load(std::vector<S>& vec) {
-        if (wc.pv_filename.empty())
-            return;
-        std::fstream fs;
-        std::string line;
-        fs.open(wc.pv_filename, std::ios_base::in);
-        if (!fs.is_open() || fs.eof())
-            return;
+        #pragma omp for nowait
+        for (size_t i = 0; i < n; i++) {
+            if (DYING) continue;
 
-        vec.clear();
-        while (std::getline(fs, line)) {
-            if (line[0] == '#') {
-                if (line == PV_EOF)
-                    return;
-                continue;
+            S walker = walkers[i];
+
+            for (size_t j = 0; j < ensemble_count; j++) {
+                size_t r = 0;
+                for (size_t t = 0; t < sample_window; t++, its_loc++)
+                    step_fn(walker, rng, r, step_env);
+                history.push_back(walker);
+
+                // death
+                if (its_loc % death_check == 0) {
+                    if (thread == 0) POLLSIGS;
+                    if (DYING) break;
+                }
             }
-            vec.push_back(read1(line));
+
+            #pragma omp critical
+            {
+                for (const S& x : history)
+                    PersistentVector<S>::write1(std::cout, x);
+            }
+
+            history.clear();
+            walkers[i] = walker;
         }
 
-        std::cerr << "Corrupt persistent data file!" << std::endl;
-        std::exit(1);
+        #pragma omp atomic
+        threads_done++;
+
+        #pragma omp master
+        {
+            if (!DYING) {
+                #pragma omp critical
+                threads_done_loc = threads_done;
+
+                while (threads_done_loc < num_threads) {
+                    if_POLLSIGS break;
+                    sleep(1);
+                    #pragma omp critical
+                    threads_done_loc = threads_done;
+                }
+            }
+        }
     }
 
-    void store(const std::vector<S>& vec) {
-        Uninterruptable unint;
-
-        if (wc.pv_filename.empty())
-            return;
-        backup();
-
-        std::fstream fs;
-        fs.open(wc.pv_filename, std::ios_base::out|std::ios_base::trunc);
-
-        fs << "# " << wc.cmd << std::endl;
-        for (const S& x : vec)
-            write1(fs, x);
-        fs << PV_EOF << std::endl;
-    }
-
-    void backup() {
-        std::fstream orig, bak;
-        std::string line;
-
-        orig.open(wc.pv_filename, std::ios_base::in);
-        if (!orig.is_open() || orig.eof())
-            return;
-
-        bak.open(filename_bak, std::ios_base::out|std::ios_base::trunc);
-        while (std::getline(orig, line))
-            bak << line << std::endl;
-    }
-
-    static S read1(std::string);
-    static std::ostream& write1(std::ostream&, const S&);
-
-};
-
-template<>
-int PersistentVector<int>::read1(std::string s) {
-    return std::stoi(s);
-}
-template<>
-std::ostream& PersistentVector<int>::write1(std::ostream& os, const int& n) {
-    return os << n << std::endl;
+    POLLSIGS;
 }
 
 //// 1d walk
@@ -363,18 +442,24 @@ void mfpt1d(double bias, S init, WalkConfig wc) {
     PersistentVector<S> pv(wc);
     pv.maybe_load(ensemble);
 
+    auto step_fn = [](S& w, pcg32& rng, size_t& r, Params1D<S>& params) {
+        w += params.fwd(rng) ? 1 : -1;
+        if (w >= params.term) {
+            w = params.init;
+            r++;
+        }
+    };
+
     for (size_t loopi = 0; !DYING && loopi < wc.loop_count; loopi++) {
-        size_t its;
-        SimTimer bench;
-        std::cout << ensemble_walk(ensemble, wc, rngs, its,
-        [](S& w, pcg32& rng, size_t& r, Params1D<S>& params) {
-            w += params.fwd(rng) ? 1 : -1;
-            if (w >= params.term) {
-                w = params.init;
-                r++;
-            }
-        }, params);
-        VERBOSE bench.report(its);
+        if (wc.streaming) {
+            streaming_walk(ensemble, wc, rngs, step_fn, params);
+        } else {
+            size_t its;
+            SimTimer bench;
+            std::cout << ensemble_walk(ensemble, wc, rngs, its, step_fn, params);
+            VERBOSE bench.report(its);
+        }
+        
         pv.store(ensemble);
     }
 }
@@ -515,19 +600,25 @@ void mfpt2d(double bias, uint init_, uint width, WalkConfig wc) {
     PersistentVector<Coord2D> pv(wc);
     pv.maybe_load(ensemble);
 
+    auto step_fn = [](Coord2D& w, pcg32& rng, size_t& r, Params2D& params) {
+        w.move_ql(params.step(rng));
+        if (w.x >= params.term) {
+            w.x = params.init;
+            w.y = params.init_dist(rng);
+            r++;
+        }
+    };
+
     for (size_t loopi = 0; !DYING && loopi < wc.loop_count; loopi++) {
-        size_t its;
-        SimTimer bench;
-        std::cout << ensemble_walk(ensemble, wc, rngs, its,
-        [](Coord2D& w, pcg32& rng, size_t& r, Params2D& params) {
-            w.move_ql(params.step(rng));
-            if (w.x >= params.term) {
-                w.x = params.init;
-                w.y = params.init_dist(rng);
-                r++;
-            }
-        }, params);
-        VERBOSE bench.report(its);
+        if (wc.streaming) {
+            streaming_walk(ensemble, wc, rngs, step_fn, params);
+        } else {
+            size_t its;
+            SimTimer bench;
+            std::cout << ensemble_walk(ensemble, wc, rngs, its, step_fn, params);
+            VERBOSE bench.report(its);
+        }
+        
         pv.store(ensemble);
     }
 }
@@ -566,6 +657,7 @@ void help(int argc, char *argv[]) {
     fprintf(stderr, "    -s window    Sample time window, [nat]\n");
     fprintf(stderr, "    -x count     Sets both m and s, [nat]\n");
     fprintf(stderr, "    -i count     Number of outputs (0=unlimited), [nat]\n");
+    fprintf(stderr, "    -r           Streaming mode (e.g. for histograms)\n");
 }
 
 std::string args2cmd(int argc, char *argv[]) {
@@ -616,11 +708,12 @@ int main(int argc, char *argv[]) {
         .sample_window = 1000,
         .ensemble_count = 1000,
         .loop_count = 0,
-        .cmd = args2cmd(argc, argv)
+        .cmd = args2cmd(argc, argv),
+        .streaming = false
     };
 
     int c;
-    while ((c = getopt(argc, argv, "129tvh?b:w:n:d:p:q:m:s:x:i:")) != -1) switch(c) {
+    while ((c = getopt(argc, argv, "129tvh?b:w:n:d:p:q:m:s:x:i:r")) != -1) switch(c) {
         case '1':
             sim = WALK_1D;
             break;
@@ -673,6 +766,9 @@ int main(int argc, char *argv[]) {
         case 'i':
             wc.loop_count = std::stoul(optarg);
             break;
+        case 'r':
+            wc.streaming = true;
+            break;
         case 'h':
         case '?':
         default:
@@ -681,6 +777,8 @@ int main(int argc, char *argv[]) {
 
     VERBOSE {
         std::cerr << "Running simulation: " << sim << std::endl;
+    if (wc.streaming) {
+        std::cerr << "Streaming mode active" << std::endl; }
         std::cerr << "  Bias:               " << bias << std::endl;
         std::cerr << "  Distance:           " << dist << std::endl;
     if (sim == WALK_2D) {
