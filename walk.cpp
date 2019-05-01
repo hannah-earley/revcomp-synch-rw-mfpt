@@ -408,6 +408,30 @@ void streaming_walk(std::vector<S>& walkers,
     POLLSIGS;
 }
 
+template <typename S, typename E, typename F>
+void walk_loop(std::vector<S>& ensemble,
+               WalkConfig wc,
+               F step_fn,
+               E step_env) {
+
+    size_t its;
+    std::vector<pcg32> rngs;
+    PersistentVector<S> pv(wc);
+    pv.maybe_load(ensemble);
+
+    for (size_t loopi = 0; !DYING && loopi < wc.loop_count; loopi++) {
+        if (wc.streaming) {
+            streaming_walk(ensemble, wc, rngs, step_fn, step_env);
+        } else {
+            SimTimer bench;
+            std::cout << ensemble_walk(ensemble, wc, rngs, its, step_fn, step_env);
+            VERBOSE bench.report(its);
+        }
+        
+        pv.store(ensemble);
+    }
+}
+
 //// 1d walk
 
 template<typename S>
@@ -434,34 +458,16 @@ struct Params1D {
 template <typename S>
 void mfpt1d(double bias, S init, WalkConfig wc) {
     Params1D<S> params(init, bias);
-
     std::vector<S> ensemble(wc.n, params.init);
     if (bias > 0) mfpt1d_seed(bias, ensemble);
-    std::vector<pcg32> rngs;
 
-    PersistentVector<S> pv(wc);
-    pv.maybe_load(ensemble);
-
-    auto step_fn = [](S& w, pcg32& rng, size_t& r, Params1D<S>& params) {
+    walk_loop(ensemble, wc, [](S& w, pcg32& rng, size_t& r, Params1D<S>& params) {
         w += params.fwd(rng) ? 1 : -1;
         if (w >= params.term) {
             w = params.init;
             r++;
         }
-    };
-
-    for (size_t loopi = 0; !DYING && loopi < wc.loop_count; loopi++) {
-        if (wc.streaming) {
-            streaming_walk(ensemble, wc, rngs, step_fn, params);
-        } else {
-            size_t its;
-            SimTimer bench;
-            std::cout << ensemble_walk(ensemble, wc, rngs, its, step_fn, params);
-            VERBOSE bench.report(its);
-        }
-        
-        pv.store(ensemble);
-    }
+    }, params);
 }
 
 //// 2d walk helpers
@@ -592,35 +598,17 @@ struct Params2D {
 
 void mfpt2d(double bias, uint init_, uint width, WalkConfig wc) {
     Params2D params(1 - init_ - width, 1 - width, bias);
-
     std::vector<Coord2D> ensemble(wc.n, Coord2D(params.init,0));
     if (bias > 0) mfpt2d_seed(bias, width, ensemble);
-    std::vector<pcg32> rngs;
 
-    PersistentVector<Coord2D> pv(wc);
-    pv.maybe_load(ensemble);
-
-    auto step_fn = [](Coord2D& w, pcg32& rng, size_t& r, Params2D& params) {
+    walk_loop(ensemble, wc, [](Coord2D& w, pcg32& rng, size_t& r, Params2D& params) {
         w.move_ql(params.step(rng));
         if (w.x >= params.term) {
             w.x = params.init;
             w.y = params.init_dist(rng);
             r++;
         }
-    };
-
-    for (size_t loopi = 0; !DYING && loopi < wc.loop_count; loopi++) {
-        if (wc.streaming) {
-            streaming_walk(ensemble, wc, rngs, step_fn, params);
-        } else {
-            size_t its;
-            SimTimer bench;
-            std::cout << ensemble_walk(ensemble, wc, rngs, its, step_fn, params);
-            VERBOSE bench.report(its);
-        }
-        
-        pv.store(ensemble);
-    }
+    }, params);
 }
 
 //// cli interface
