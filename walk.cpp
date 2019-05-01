@@ -122,6 +122,13 @@ pcg32 &omp_thread_rng(std::vector<pcg32>& rngs) {
     return rngs[omp_get_thread_num()];
 }
 
+#define SIGPOLL if ((sig = unterm.poll()) > 0) {\
+    std::cout << "...got interrupt(" << sig << ")...";\
+    DYING = true;\
+}
+
+#define if_SIGPOLL SIGPOLL if (sig > 0)
+
 template <typename S, typename E, typename F>
 Stats ensemble_walk(std::vector<S>& walkers,
                     WalkConfig wc,
@@ -139,6 +146,7 @@ Stats ensemble_walk(std::vector<S>& walkers,
     std::vector<size_t> rs(wc.ensemble_count, 0);
     std::vector<double> js(wc.ensemble_count, 0);
     std::vector<size_t> ns(wc.ensemble_count, 0);
+    size_t threads_done = 0;
 
     #pragma omp parallel
     {
@@ -150,13 +158,16 @@ Stats ensemble_walk(std::vector<S>& walkers,
                sample_window = wc.sample_window,
                death_check = DEATH_CHECK;
 
+        size_t num_threads = omp_get_num_threads();
+        size_t threads_done_loc;
+        int thread = omp_get_thread_num();
+
         // progress
         size_t progress_its = 0;
         size_t progress_10pc = 0;
-        size_t progress_chunk = (n / omp_get_num_threads()) + 1;
-        int thread = omp_get_thread_num();
+        size_t progress_chunk = (n / num_threads) + 1;
 
-        #pragma omp for
+        #pragma omp for nowait
         for (size_t i = 0; i < n; i++) {
             if (DYING) continue;
 
@@ -183,15 +194,29 @@ Stats ensemble_walk(std::vector<S>& walkers,
 
                 // death
                 if (its_loc % death_check == 0) {
-                    if (thread == 0 && (sig = unterm.poll()) > 0) {
-                        std::cout << "got interrupt (" << sig << ")...";
-                        DYING = true;
-                    }
-
+                    if (thread == 0) SIGPOLL;
                     if (DYING) break;
                 }
             }
             walkers[i] = walker;
+        }
+
+        #pragma omp atomic
+        threads_done++;
+
+        #pragma omp master
+        {
+            if (!DYING) {
+                #pragma omp critical
+                threads_done_loc = threads_done;
+
+                while (threads_done_loc < num_threads) {
+                    if_SIGPOLL break;
+                    sleep(1);
+                    #pragma omp critical
+                    threads_done_loc = threads_done;
+                }
+            }
         }
 
         for (size_t j = 0; j < ensemble_count; j++) {
@@ -211,10 +236,7 @@ Stats ensemble_walk(std::vector<S>& walkers,
     }
 
     // death
-    if ((sig = unterm.poll()) > 0) {
-        std::cout << "got interrupt (" << sig << ")...";
-        DYING = true;
-    }
+    SIGPOLL;
 
     // progress
     VERBOSE std::cout << std::endl;
