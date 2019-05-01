@@ -1,9 +1,5 @@
 # Todo
 
-## `./batch.py`
-- on sigint/sigterm, first try to pass onto current walk instance (then die)
-- after multiple, sigkill it?
-
 ## `./walk`
 - histogram/streaming mode for collecting many samples from ss distribution
 
@@ -96,6 +92,7 @@
             - prec
     - requirements
         - cpu
+- on sigint/sigterm, first try to pass onto current walk instance (then die)
 
 
 # Var
