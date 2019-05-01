@@ -1,8 +1,5 @@
 # Todo
 
-## `./walk`
-- histogram/streaming mode for collecting many samples from ss distribution
-
 # Done
 
 ## `./walk`
@@ -30,6 +27,7 @@
     - else assume error and die...
 - hpc checkpointing
     - listen for sigterm and checkpoint early
+- histogram/streaming mode for collecting many samples from ss distribution
 
 ## `./job.sh`
 - pass through most options
