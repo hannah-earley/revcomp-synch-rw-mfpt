@@ -440,6 +440,24 @@ void walk_loop(std::vector<S>& ensemble,
 
 //// 1d walk
 
+struct LinWalkStepDistr32 {
+    uint32_t pt;
+
+    LinWalkStepDistr32(double p) {
+        const uint64_t u32max = 4294967295;
+        pt = 4294967295 * p;
+        uint64_t pt_ = p * u32max;
+        if (pt_ > u32max) pt = u32max;
+        else if (pt_ < 0) pt = 0;
+        else pt = pt_;
+    }
+
+    inline bool operator() (pcg32& g) const {
+        uint32_t r = g();
+        return (pt >= r);
+    }
+};
+
 template<typename S>
 void mfpt1d_seed(double bias, std::vector<S>& ensemble) {
     pcg32 rng = fresh_rng();
@@ -452,12 +470,12 @@ template <typename S>
 struct Params1D {
     S init, term;
     double bias, p;
-    std::bernoulli_distribution fwd;
+    LinWalkStepDistr32 step;
 
     Params1D(S init, double bias) :
         init(init), term(0),
         bias(bias), p(0.5 * (1+bias)),
-        fwd(p)
+        step(p)
     {}
 };
 
@@ -468,7 +486,7 @@ void mfpt1d(double bias, S init, WalkConfig wc) {
     if (bias > 0) mfpt1d_seed(bias, ensemble);
 
     walk_loop(ensemble, wc, [](S& w, pcg32& rng, size_t& r, Params1D<S>& params) {
-        w += params.fwd(rng) ? 1 : -1;
+        w += params.step(rng) ? 1 : -1;
         if (w >= params.term) {
             w = params.init;
             r++;
@@ -514,7 +532,7 @@ struct Coord2D {
     Coord2D(int x, int y) : x(x), y(y) {}
     friend std::ostream& operator<< (std::ostream &os, const Coord2D &coord);
 
-    inline void move_ql(QStep dw) {
+    inline void move_ql(bool right, bool down) {
         // move within a pre-constriction quadrant...
 
         /*  // below condition should never happen...
@@ -525,14 +543,26 @@ struct Coord2D {
             }
         */
 
-        if (dw.right) {
-            if (y == (dw.up ? 0 : -x))
-                return;
-        }
+        //if (right)
+        //    if (y == (down ? -x : 0))
+        //        return;
+        // if ((dw.right ? y : -1) == (dw.up ? 0 : -x))
+        //     return;
 
-        x += dw.right ?  1 : -1;
-        y += dw.up    ? -1 :  0;
-        y += dw.right ?  0 :  1;
+        int a = right ? y : -1;
+        int b = -x * down;
+        if (a == b) return;
+
+        x += 2 * right - 1;
+        y += down - right;
+
+    }
+
+    inline void move_rng(uint32_t pt, pcg32& g) {
+        uint32_t r = g();
+        bool right = pt >= r;
+        bool down = (r & 1);
+        move_ql(right, down);
     }
 };
 std::ostream& operator<< (std::ostream &os, const Coord2D &coord) {
@@ -568,7 +598,7 @@ void quad_step_test() {
         std::cout << c << " : ";
         for (QStep& dir : dirs) {
             Coord2D cc = Coord2D(c);
-            cc.move_ql(dir);
+            cc.move_ql(dir.right, !dir.up);
             std::cout << cc << " ";
         }
         std::cout << std::endl;
@@ -593,27 +623,28 @@ void mfpt2d_seed(double bias, int width, std::vector<Coord2D>& ensemble) {
 }
 
 struct Params2D {
-    const uint init;
+    const unsigned int init;
     const int term;
     std::uniform_int_distribution<int> init_dist;
     double bias, p;
     QuadWalkStepDistr32 step;
+    uint32_t pt;
 
-    Params2D(uint init, int term, double bias) :
+    Params2D(unsigned int init, int term, double bias) :
         init(init), term(term),
         init_dist(0,-init),
         bias(bias), p(0.5 * (1+bias)),
-        step(p)
+        step(p), pt(step.pt)
     {}
 };
 
-void mfpt2d(double bias, uint init_, uint width, WalkConfig wc) {
+void mfpt2d(double bias, unsigned int init_, unsigned int width, WalkConfig wc) {
     Params2D params(1 - init_ - width, 1 - width, bias);
     std::vector<Coord2D> ensemble(wc.n, Coord2D(params.init,0));
     if (bias > 0) mfpt2d_seed(bias, width, ensemble);
 
     walk_loop(ensemble, wc, [](Coord2D& w, pcg32& rng, size_t& r, Params2D& params) {
-        w.move_ql(params.step(rng));
+        w.move_rng(params.pt, rng);
         if (w.x >= params.term) {
             w.x = params.init;
             w.y = params.init_dist(rng);
@@ -697,8 +728,8 @@ int main(int argc, char *argv[]) {
     std::cerr.precision(12);
 
     double bias = 0;
-    uint width = 1;
-    uint dist = 1;
+    unsigned int width = 1;
+    unsigned int dist = 1;
     Simulation sim = UNITEST;
     WalkConfig wc = {
         .n = 1000,
@@ -721,8 +752,12 @@ int main(int argc, char *argv[]) {
             break;
         case 't':
             sim = UNITEST;
+            VERBOSE_MODE = true;
+            break;
         case '9':
             sim = TESTBED;
+            VERBOSE_MODE = true;
+            break;
         case 'v':
             VERBOSE_MODE = true;
             break;
