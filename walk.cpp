@@ -471,11 +471,12 @@ struct Params1D {
     S init, term;
     double bias, p;
     LinWalkStepDistr32 step;
+    uint32_t pt;
 
     Params1D(S init, double bias) :
         init(init), term(0),
         bias(bias), p(0.5 * (1+bias)),
-        step(p)
+        step(p), pt(step.pt)
     {}
 };
 
@@ -486,7 +487,8 @@ void mfpt1d(double bias, S init, WalkConfig wc) {
     if (bias > 0) mfpt1d_seed(bias, ensemble);
 
     walk_loop(ensemble, wc, [](S& w, pcg32& rng, size_t& r, Params1D<S>& params) {
-        w += params.step(rng) ? 1 : -1;
+        bool right = params.pt >= rng();
+        w += 2 * right - 1;
         if (w >= params.term) {
             w = params.init;
             r++;
@@ -543,15 +545,9 @@ struct Coord2D {
             }
         */
 
-        //if (right)
-        //    if (y == (down ? -x : 0))
-        //        return;
-        // if ((dw.right ? y : -1) == (dw.up ? 0 : -x))
-        //     return;
-
         int a = right ? y : -1;
-        int b = -x * down;
-        if (a == b) return;
+        int b = x * down;
+        if (a == -b) return;
 
         x += 2 * right - 1;
         y += down - right;
