@@ -171,6 +171,10 @@ struct PersistentVector {
 
     static S read1(std::string);
     static std::ostream& write1(std::ostream&, const S&);
+    static void printn(FILE* file, const std::vector<S>&);
+    static void printn(const std::vector<S>& vec) {
+        printn(stdout, vec);
+    }
 
 };
 
@@ -181,6 +185,11 @@ int PersistentVector<int>::read1(std::string s) {
 template<>
 std::ostream& PersistentVector<int>::write1(std::ostream& os, const int& n) {
     return os << n << std::endl;
+}
+template<>
+void PersistentVector<int>::printn(FILE* file, const std::vector<int>& ns) {
+    for (const int n : ns)
+        fprintf(file, "%d\n", n);
 }
 
 //// parallel walking routine
@@ -377,10 +386,7 @@ void streaming_walk(std::vector<S>& walkers,
             }
 
             #pragma omp critical
-            {
-                for (const S& x : history)
-                    PersistentVector<S>::write1(std::cout, x);
-            }
+            PersistentVector<S>::printn(history);
 
             history.clear();
             walkers[i] = walker;
@@ -545,6 +551,11 @@ Coord2D PersistentVector<Coord2D>::read1(std::string s) {
 template<>
 std::ostream& PersistentVector<Coord2D>::write1(std::ostream& os, const Coord2D& coord) {
     return os << coord.x << "," << coord.y << std::endl;
+}
+template<>
+void PersistentVector<Coord2D>::printn(FILE* file, const std::vector<Coord2D>& coords) {
+    for (const Coord2D &coord : coords)
+        fprintf(file, "%d,%d\n", coord.x, coord.y);
 }
 
 void quad_step_test() {

@@ -5,3 +5,6 @@ jobs/*
 walk
 .DS_Store
 *.swp
+queue/*
+note/*
+__pycache__
