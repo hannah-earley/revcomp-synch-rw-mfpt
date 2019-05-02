@@ -480,8 +480,8 @@ void mfpt1d(double bias, S init, WalkConfig wc) {
 
 struct QuadWalkStepDistr32 {
     struct Step {
-        bool right;
-        bool up;
+        bool right : 1;
+        bool up : 1;
 
         Step(bool right, bool up) : right(right), up(up) {};
         friend std::ostream& operator<< (std::ostream &os, const Step &step);
@@ -516,17 +516,17 @@ struct Coord2D {
 
     inline void move_ql(QStep dw) {
         // move within a pre-constriction quadrant...
-        if (false) // below condition should never happen...
+
+        /*  // below condition should never happen...
             if (y < 0 || y > -x) {
                 std::cerr << "!" << *this << "!";
                 if (y < 0) y = 0;
                 if (y > -x) y = -x;
             }
+        */
 
         if (dw.right) {
-            if (y == 0 && dw.up)
-                return;
-            if (y == -x && !dw.up)
+            if (y == (dw.up ? 0 : -x))
                 return;
         }
 
