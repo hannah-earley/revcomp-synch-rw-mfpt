@@ -1,5 +1,8 @@
 # Todo
 
+## `./visualise.py`
+- use pyplot to produce useful plots automagically
+
 # Done
 
 ## `./walk`
@@ -92,6 +95,8 @@
         - cpu
 - on sigint/sigterm, first try to pass onto current walk instance (then die)
 
+## `./distribution.py`
+- build tool...
 
 # Var
 ## `./walk`

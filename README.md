@@ -78,6 +78,14 @@ This repository comes with a number of tools.
 - `./refine.py` - this tool takes a .csv file(s) and reports the combined data (with lower error) for each file by aggregating all the outputs
     - pass `-s S` to skip the first `S` datums (e.g. for distribution burn-in purposes)
 
+- `./distribution.py` takes piped output from `./walk -r` and builds 'histogram' data of the distribution
+    - the data is printed (in csv format) when the stream ends or on SIGINT
+        - or after `-n` results
+    - is provided with a filename, output is stored there
+        - in addition, said csv file will be updated on subsequent runs
+        - that is, the counts will be combined
+    - arguments can be used to bin the results, skip some initial data, and give progress updates
+
 ### Tips
 - The MFPT is computed as the reciprocal of the _steady state_ current for the distribution of walkers (where walkers reaching the absorbing boundary are teleported back to the starting position)
     - Therefore, `./walk` should first be run long enough for the initial distribution to converge on the steady state distribution
