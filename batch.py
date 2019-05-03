@@ -469,6 +469,14 @@ class Job:
         if disp:
             print('%s: %s' % (self.path, s_))
 
+    def missing_status(self, msg='COMPLETE'):
+        try:
+            with open(self.path_stat, 'x'):
+                pass
+            self.record_status(msg)
+        except FileExistsError:
+            pass
+
     def get_status(self):
         active = False
         status = "QUEUED"
@@ -501,6 +509,8 @@ class Job:
                 if todo <= 0:
                     if started:
                         self.record_status(msg='DONE')
+                    else:
+                        self.missing_status()
                     return True
                 started = True
                 self.record_status(msg='INITIALISING')
