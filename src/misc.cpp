@@ -4,7 +4,7 @@
 #include <string>
 #include <iomanip>
 #include <sstream>
-#include "walk.h"
+#include "walk.hpp"
 
 double LambertW0_neg_(double x) {
     // Estimate LambertW (0 branch) using two approaches (5 terms)

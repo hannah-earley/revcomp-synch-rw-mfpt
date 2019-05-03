@@ -10,7 +10,7 @@ endif
 SRCDIR=src
 OBJDIR=obj
 
-_DEPS=walk.h testbed.cpp
+_DEPS=walk.hpp testbed.cpp
 DEPS=$(patsubst %,$(SRCDIR)/%,$(_DEPS))
 _OBJ=walk.o misc.o
 OBJ=$(patsubst %,$(OBJDIR)/%,$(_OBJ))
