@@ -20,6 +20,7 @@ import importlib.util
 import signal
 
 import config
+import common
 
 try:
     import psutil
@@ -586,12 +587,12 @@ class CommonParser(argparse.ArgumentParser):
                             help="queue directory")
 
 if __name__ == '__main__':
-    parser = CommonParser(description="Suite of batching tools for the automatic running of data generation jobs.")
-    subparsers = parser.add_subparsers(title='commands', #metavar='COMMAND',
-                    help='Supply with -h for more information.')
-    parser.set_defaults(handler=handler_help(parser))
+    parser = common.CommandParser(description="Suite of batching tools for the automatic running of data generation jobs.")
+    parser.add_argument('-q', default='./queue',
+                        help="queue directory")
 
-    parser_enq = subparsers.add_parser('enqeue', aliases=['enq'],
+    parser_enq = parser.add_command('enqeue', aliases=['enq'],
+                    help='Generate jobsets from templates.',
                     description='Generate jobsets from templates.')
     parser_enq.add_argument('jobset', nargs='*',
                     help='Which jobsets to enqueue. Defaults to all.')
@@ -599,7 +600,8 @@ if __name__ == '__main__':
                     help='Relative path to jobset templater.')
     parser_enq.set_defaults(handler=handler_enq)
     
-    parser_stat = subparsers.add_parser('status', aliases=['stat'],
+    parser_stat = parser.add_command('status', aliases=['stat'],
+                    help='Generate status reports.',
                     description='Generate status reports.')
     parser_stat.add_argument('-n', '--interval', default=None, type=float,
                     help="repeat at interval")
@@ -610,7 +612,8 @@ if __name__ == '__main__':
                     help='Which jobsets to report on. Defaults to all.')
     parser_stat.set_defaults(handler=handler_stat)
     
-    parser_run = subparsers.add_parser('run',
+    parser_run = parser.add_command('run',
+                    help='Run jobs in batch mode.',
                     description='Run jobs in batch mode.')
     parser_run.add_argument('--mean', default=False, action='store_true',
                     help="don't run nicely (e.g. hpc allocation)")
