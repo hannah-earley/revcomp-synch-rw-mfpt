@@ -19,6 +19,8 @@ from functools import wraps
 import importlib.util
 import signal
 
+import config
+
 try:
     import psutil
     psutil_ = True
@@ -206,7 +208,10 @@ def get_stats(args):
 def handler_stat(args):
     eml = args.email
     int_ = args.interval
-    subj = 'Re: RWX Batch Update'
+    subj = config.email.subject
+    if eml is False:
+        eml = config.email.recipient
+
     while True:
         activen, actp, outputn, outp = get_stats(args)
         stats = "# active jobs: %d\n%s\n" % (activen, actp)
@@ -220,7 +225,7 @@ def handler_stat(args):
             print('emailing to', eml, '...')
             msg = email.message.EmailMessage()
             msg['Subject'] = subj
-            msg['From'] = 'RWX Batch <wje25@maths.cam.ac.uk>'
+            msg['From'] = config.email.sender
             msg['To'] = eml
             msg.set_content(stats)
             p = subprocess.Popen(["/usr/sbin/sendmail", "-t", "-oi"], stdin=subprocess.PIPE)
@@ -570,34 +575,49 @@ def handler_run(args):
                     if SIGNALLED:
                         return
 
+class CommonParser(argparse.ArgumentParser):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.install_common_args()
+        self.set_defaults(handler=handler_none)
+
+    def install_common_args(self):
+        self.add_argument('-q', default='./queue',
+                            help="queue directory")
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="")
-    parser.add_argument('-q', default='./queue',
-                        help="queue directory")
-    subparsers = parser.add_subparsers(title='commands', help='run with -h for more info')
+    parser = CommonParser(description="Suite of batching tools for the automatic running of data generation jobs.")
+    subparsers = parser.add_subparsers(title='commands', #metavar='COMMAND',
+                    help='Supply with -h for more information.')
     parser.set_defaults(handler=handler_help(parser))
 
-    parser_enq = subparsers.add_parser('enqeue', aliases=['enq'])
-    parser_enq.add_argument('jobset', nargs='*')
-    parser_enq.add_argument('--template', default='template.py')
+    parser_enq = subparsers.add_parser('enqeue', aliases=['enq'],
+                    description='Generate jobsets from templates.')
+    parser_enq.add_argument('jobset', nargs='*',
+                    help='Which jobsets to enqueue. Defaults to all.')
+    parser_enq.add_argument('--template', default='template.py',
+                    help='Relative path to jobset templater.')
     parser_enq.set_defaults(handler=handler_enq)
     
-    parser_stat = subparsers.add_parser('status', aliases=['stat'])
+    parser_stat = subparsers.add_parser('status', aliases=['stat'],
+                    description='Generate status reports.')
     parser_stat.add_argument('-n', '--interval', default=None, type=float,
-                             help="repeat at interval")
+                    help="repeat at interval")
     parser_stat.add_argument('-e', '--email', default=None, type=str,
-                             nargs='?', const='wje25@cam.ac.uk',
-                             help="send stats by email")
-    parser_stat.add_argument('jobset', nargs='*')
+                    nargs='?', const=False,
+                    help="send stats by email")
+    parser_stat.add_argument('jobset', nargs='*',
+                    help='Which jobsets to report on. Defaults to all.')
     parser_stat.set_defaults(handler=handler_stat)
     
-    parser_run = subparsers.add_parser('run')
+    parser_run = subparsers.add_parser('run',
+                    description='Run jobs in batch mode.')
     parser_run.add_argument('--mean', default=False, action='store_true',
-                            help="don't run nicely (e.g. hpc allocation)")
+                    help="don't run nicely (e.g. hpc allocation)")
     parser_run.add_argument('--inf', default=False, action='store_true',
-                            help="run indefinitely")
-    parser_run.add_argument('jobset', nargs='*')
+                    help="run indefinitely")
+    parser_run.add_argument('jobset', nargs='*',
+                    help='Which jobsets to run. Defaults to all.')
     parser_run.set_defaults(handler=handler_run)
 
     args = parser.parse_args()
