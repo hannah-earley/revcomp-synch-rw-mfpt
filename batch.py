@@ -144,6 +144,7 @@ def handler_enq(args):
 def get_stats_(jsdir, base):
     outp = ""
     sep = '  '
+    activen = 0
 
     for root, _, jobs in os.walk(jsdir):
         path = pathlib.PurePath(root).relative_to(jsdir)
@@ -164,9 +165,13 @@ def get_stats_(jsdir, base):
                 continue
 
             jobj = Job(job, jobp)
-            outp += sep*(lvl+1) + jobn + ' : ' + jobj.get_status() + "\n"
+            actp, stat = jobj.get_status()
+            outp += sep*(lvl+1) + jobn + ' : ' + stat + "\n"
 
-    return outp
+            if actp:
+                activen += 1
+
+    return activen, outp
 
 def get_stats(args):
     qdir = args.q
@@ -175,9 +180,12 @@ def get_stats(args):
         return get_stats_(qdir, 'queue')
     else:
         outp = ""
+        activen = 0
         for set_ in sets:
-            outp += get_stats_(os.path.join(qdir, set_), set_)
-        return outp
+            actn_, outp_ = get_stats_(os.path.join(qdir, set_), set_)
+            activen += actn_
+            outp += outp_
+        return activen, outp
 
 
 def handler_stat(args):
@@ -185,7 +193,8 @@ def handler_stat(args):
     int_ = args.interval
     subj = 'Re: RWX Batch Update'
     while True:
-        stats = get_stats(args)
+        activen, stats_ = get_stats(args)
+        stats = "# active jobs: %d\n%s" % (activen, stats_)
 
         print('[%s] ' % datetime.datetime.now(), end='')
         if eml is None:
@@ -448,6 +457,7 @@ class Job:
             print('%s: %s' % (self.path, s_))
 
     def get_status(self):
+        active = False
         status = "QUEUED"
         cached = ""
         try:
@@ -462,8 +472,9 @@ class Job:
                     status = "HALTED"
         except Job.LockedOut:
             status = "ACTIVE"
+            active = True
 
-        return '[%s] %s' % (status, cached)
+        return active, '[%s] %s' % (status, cached)
 
 
     @needload
