@@ -84,6 +84,8 @@ This repository comes with a number of tools.
 - `./refine.py` - this tool takes a .csv file(s) and reports the combined data (with lower error) for each file by aggregating all the outputs
     - pass `-s S` to skip the first `S` datums (e.g. for distribution burn-in purposes)
 
+- `./counts.sh` - quick status tool that displays the number of outputs for each job (estimated via its log file)
+
 - `./distribution.py` takes piped output from `./walk -r` and builds 'histogram' data of the distribution
     - the data is printed (in csv format) when the stream ends or on SIGINT
         - or after `-n` results
