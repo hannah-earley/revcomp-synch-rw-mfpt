@@ -1,7 +1,8 @@
 # Todo
 
-## `./visualise.py`
+## `./analyse.py`
 - use pyplot to produce useful plots automagically
+- do other useful analyses
 
 # Done
 

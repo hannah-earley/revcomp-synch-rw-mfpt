@@ -63,15 +63,6 @@ def flag_signals(sigs=[signal.SIGINT, signal.SIGTERM]):
     for sig in sigs:
         signal.signal(sig, old[sig])
 
-def handler_help(parser):
-    def handler(args):
-        parser.print_help()
-        sys.exit(1)
-    return handler
-
-def handler_none(args):
-    raise NotImplementedError
-
 def handler_enq1(qdir, jset, tmpl):
     # fork in case importing template does anything crazy
     pid = os.fork()
@@ -575,16 +566,6 @@ def handler_run(args):
                         visited.add(jobpath)
                     if SIGNALLED:
                         return
-
-class CommonParser(argparse.ArgumentParser):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.install_common_args()
-        self.set_defaults(handler=handler_none)
-
-    def install_common_args(self):
-        self.add_argument('-q', default='./queue',
-                            help="queue directory")
 
 if __name__ == '__main__':
     parser = common.CommandParser(description="Suite of batching tools for the automatic running of data generation jobs.")
