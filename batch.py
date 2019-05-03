@@ -69,44 +69,77 @@ def handler_help(parser):
 def handler_none(args):
     raise NotImplementedError
 
+def handler_enq1(qdir, jset, tmpl):
+    # fork in case importing template does anything crazy
+    pid = os.fork()
+    if pid != 0:
+        while True:
+            try:
+                os.waitpid(pid, 0)
+            except OSError:
+                time.sleep(1)
+                print("!! Possible error in enqueuing jobset %s..." % jset)
+                continue
+            return
+
+    try:
+        jdir = os.path.join(qdir, jset)
+        jtpl = os.path.join(jdir, tmpl)
+
+        spec = importlib.util.spec_from_file_location("template", jtpl)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        jobbs = set()
+
+        for jobn,jobd in mod.generate():
+            print("- %s" % jobn)
+            jobf = jobn + EXT_JOB
+            jobp = os.path.join(jdir, jobf)
+            jobj = Job(jobn, jobp)
+            save = lambda f: json.dump(jobd, f, sort_keys=True, indent=4)
+
+            jobb = jobj.filebase(jobd['options'])
+            if jobb in jobbs:
+                print("-> Job would refer to duplicate data file!: %s" % jobb)
+                continue
+            jobbs.add(jobb)
+
+            try:
+                with open(jobp, 'x') as f:
+                    save(f)
+            except FileExistsError:
+                try:
+                    with jobj.lock() as f:
+                        f.truncate()
+                        save(f)
+                except Job.LockedOut:
+                    with open(jobp, 'r') as f:
+                        if json.load(f) != jobj:
+                            print("-> Can't update -- job being executed!")
+
+    finally:
+        try: # try to replace the process with a noop (`true`)
+            os.execlp('true', 'true')
+
+        finally: # else, fallback to regular exiting of the interpreter
+            sys.exit()
+
 def handler_enq(args):
     qdir = args.q
-    jset = args.jobset
     tmpl = args.template
-    jdir = os.path.join(qdir, jset)
-    jtpl = os.path.join(jdir, tmpl)
+    jsets = args.jobset
 
-    spec = importlib.util.spec_from_file_location("template", jtpl)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    if not jsets:
+        for root, _, jobs in os.walk(qdir):
+            if tmpl in jobs:
+                jset = pathlib.PurePath(root).relative_to(qdir)
+                jsets.append(str(jset))
+        jsets.sort()
 
-    jobbs = set()
-
-    for jobn,jobd in mod.generate():
-        print(jobn)
-        jobf = jobn + EXT_JOB
-        jobp = os.path.join(jdir, jobf)
-        jobj = Job(jobn, jobp)
-        save = lambda f: json.dump(jobd, f, sort_keys=True, indent=4)
-
-        jobb = jobj.filebase(jobd['options'])
-        if jobb in jobbs:
-            print("  Job would refer to duplicate data file!: %s" % jobb)
-            continue
-        jobbs.add(jobb)
-
-        try:
-            with open(jobp, 'x') as f:
-                save(f)
-        except FileExistsError:
-            try:
-                with jobj.lock() as f:
-                    f.truncate()
-                    save(f)
-            except Job.LockedOut:
-                with open(jobp, 'r') as f:
-                    if json.load(f) != jobj:
-                        print("  Can't update -- job being executed!")
+    for jset in args.jobset:
+        print("%s:" % jset)
+        handler_enq1(qdir, jset, tmpl)
 
 def get_stats_(jsdir, base):
     outp = ""
@@ -519,7 +552,7 @@ if __name__ == '__main__':
     parser.set_defaults(handler=handler_help(parser))
 
     parser_enq = subparsers.add_parser('enqeue', aliases=['enq'])
-    parser_enq.add_argument('jobset')
+    parser_enq.add_argument('jobset', nargs='*')
     parser_enq.add_argument('--template', default='template.py')
     parser_enq.set_defaults(handler=handler_enq)
     
