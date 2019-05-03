@@ -8,3 +8,4 @@ walk
 queue/*
 note/*
 __pycache__
+config.py

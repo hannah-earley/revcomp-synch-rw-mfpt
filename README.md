@@ -1,5 +1,11 @@
 # Readme
 
+## Setup
+
+1. Clone the repository where desired
+2. Run `make` to compile the primary tool, `./walk`
+3. Copy `config.template.py` to `config.py` and configure appropriately
+
 ## Usage
 
 This repository comes with a number of tools.
