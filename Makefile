@@ -7,27 +7,29 @@ else
     CXXFLAGS=-Xclang -fopenmp -std=c++11 -O3 -Wall -Iinc/
     LINKFLAGS=-lomp
 endif
-OBDIR=obj
+SRCDIR=src
+OBJDIR=obj
 
-DEPS=walk.h testbed.cpp
+_DEPS=walk.h testbed.cpp
+DEPS=$(patsubst %,$(SRCDIR)/%,$(_DEPS))
 _OBJ=walk.o misc.o
-OBJ=$(patsubst %,$(OBDIR)/%,$(_OBJ))
+OBJ=$(patsubst %,$(OBJDIR)/%,$(_OBJ))
 
 all: walk
 
 walk: $(OBJ)
 	$(CXX) $(CXXFLAGS) $(LINKFLAGS) -o $@ $^
 
-$(OBDIR)/%.o: %.cpp $(DEPS)
-	mkdir -p $(OBDIR)
+$(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(DEPS)
+	mkdir -p $(OBJDIR)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 run: walk
 	./walk
 
 clean:
-	-rm -f $(OBDIR)/*.o
-	-rmdir $(OBDIR)
+	-rm -f $(OBJDIR)/*.o
+	-rmdir $(OBJDIR)
 
 
 .PHONY: all run clean
