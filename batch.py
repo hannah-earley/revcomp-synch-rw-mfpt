@@ -142,9 +142,11 @@ def handler_enq(args):
         handler_enq1(qdir, jset, tmpl)
 
 def get_stats_(jsdir, base):
-    outp = ""
     sep = '  '
     activen = 0
+    actp = ""
+    outputn = 0
+    outp = ""
 
     for root, _, jobs in os.walk(jsdir):
         path = pathlib.PurePath(root).relative_to(jsdir)
@@ -158,6 +160,7 @@ def get_stats_(jsdir, base):
             outp += sep*lvl + parts[-1] + ':' + "\n"
         else:
             outp += base + ':' + "\n"
+
         for job in jobs:
             jobn, ext = os.path.splitext(job)
             jobp = os.path.join(root, job)
@@ -165,13 +168,21 @@ def get_stats_(jsdir, base):
                 continue
 
             jobj = Job(job, jobp)
-            actp, stat = jobj.get_status()
-            outp += sep*(lvl+1) + jobn + ' : ' + stat + "\n"
+            active, stat = jobj.get_status()
+            line = jobn + ' :: ' + stat + "\n"
+            outp += sep*(lvl+1) + line
+            outputn += 1
 
-            if actp:
+            if active:
                 activen += 1
+                actp += sep
+                if lvl:
+                    actp += base + ':'
+                    actp += ':'.join(parts)
+                    actp += ':'
+                actp += line
 
-    return activen, outp
+    return activen, actp, outputn, outp
 
 def get_stats(args):
     qdir = args.q
@@ -179,13 +190,17 @@ def get_stats(args):
     if not sets:
         return get_stats_(qdir, 'queue')
     else:
-        outp = ""
         activen = 0
+        actp = ""
+        outputn = 0
+        outp = ""
         for set_ in sets:
-            actn_, outp_ = get_stats_(os.path.join(qdir, set_), set_)
+            actn_, actp_, outn_, outp_ = get_stats_(os.path.join(qdir, set_), set_)
             activen += actn_
+            actp += actp_
+            outputn += outn_
             outp += outp_
-        return activen, outp
+        return activen, actp, outputn, outp
 
 
 def handler_stat(args):
@@ -193,8 +208,9 @@ def handler_stat(args):
     int_ = args.interval
     subj = 'Re: RWX Batch Update'
     while True:
-        activen, stats_ = get_stats(args)
-        stats = "# active jobs: %d\n%s" % (activen, stats_)
+        activen, actp, outputn, outp = get_stats(args)
+        stats = "# active jobs: %d\n%s\n" % (activen, actp)
+        stats += "# all jobs: %d\n%s" % (outputn, outp)
 
         print('[%s] ' % datetime.datetime.now(), end='')
         if eml is None:
