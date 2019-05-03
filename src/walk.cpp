@@ -14,7 +14,7 @@
 #include <string>
 #include <limits>
 #include "pcg/pcg_random.hpp"
-#include "walk.h"
+#include "walk.hpp"
 
 bool VERBOSE_MODE = false;
 #define VERBOSE if (VERBOSE_MODE)
