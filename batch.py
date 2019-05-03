@@ -582,6 +582,8 @@ if __name__ == '__main__':
     parser.add_argument('-q', default='./queue',
                         help="queue directory")
 
+
+
     parser_enq = parser.add_command('enqeue', aliases=['enq'],
                     help='Generate jobsets from templates.',
                     description='Generate jobsets from templates.')
@@ -591,6 +593,8 @@ if __name__ == '__main__':
                     help='Relative path to jobset templater.')
     parser_enq.set_defaults(handler=handler_enq)
     
+
+
     parser_stat = parser.add_command('status', aliases=['stat'],
                     help='Generate status reports.',
                     description='Generate status reports.')
@@ -603,6 +607,8 @@ if __name__ == '__main__':
                     help='Which jobsets to report on. Defaults to all.')
     parser_stat.set_defaults(handler=handler_stat)
     
+
+
     parser_run = parser.add_command('run',
                     help='Run jobs in batch mode.',
                     description='Run jobs in batch mode.')
@@ -613,6 +619,8 @@ if __name__ == '__main__':
     parser_run.add_argument('jobset', nargs='*',
                     help='Which jobsets to run. Defaults to all.')
     parser_run.set_defaults(handler=handler_run)
+
+
 
     args = parser.parse_args()
     args.handler(args)

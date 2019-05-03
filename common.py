@@ -2,6 +2,35 @@
 import argparse
 import shutil
 import textwrap
+from functools import wraps
+
+def run_once(message=None, error=True, warn=True):
+    def wrapper(f):
+        nonlocal message
+        if not message:
+            message = "Attempt to run %s multiple times!" % f.__name__
+        has_run = False
+        ret_val = None
+
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            nonlocal has_run, ret_val
+            if has_run:
+                if error:
+                    raise RuntimeError(message)
+                if warn:
+                    print("Warning: " + message)
+                return ret_val
+            has_run = True
+            ret_val = f(*args, **kwargs)
+            return ret_val
+        return wrapped
+
+    if callable(message):
+        f = message
+        message = None
+        return wrapper(f)
+    return wrapper
 
 def handler_help(parser):
     def handler(args):
@@ -10,6 +39,7 @@ def handler_help(parser):
     return handler
 
 def handler_none(args):
+    print(args)
     raise NotImplementedError
 
 class _FuncAction(argparse.Action):
