@@ -13,13 +13,12 @@ def output_csv(counts, file=sys.stdout):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-b', '--binning', default=1, type=int)
-    parser.add_argument('-B', action='store_true', default=False,
+    parser.add_argument('-B', action='store_true',
                         help='rebin input file if possible')
     parser.add_argument('-s', '--skip', default=0, type=int)
     parser.add_argument('-n', '--limit', default=float('inf'), type=int)
     parser.add_argument('-v', '--every', default=float('inf'), type=int)
-    parser.add_argument('-V', action='store_true', default=False,
-                        help='every 5%')
+    parser.add_argument('-V', action='store_true', help='every 5%%')
     parser.add_argument('file', nargs='?')
     args = parser.parse_args()
 
