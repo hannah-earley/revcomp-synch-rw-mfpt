@@ -2,6 +2,18 @@
 import os
 import common
 import json
+import pathlib
+
+EXTS = {
+    'log': '.log',
+    'persist': '.dat',
+    'persist-bak': '.dat~',
+    'outp': '.csv',
+    'outp_raw': '.csv',
+    'distr': '.dist'
+}
+
+EXTS_rev = {v:k for k,v in EXTS.items()}
 
 def handler_common(args):
     try:
@@ -10,22 +22,48 @@ def handler_common(args):
     except AttributeError:
         pass
 
+class Job:
+    def __init__(self, jobdir, jobn):
+        self.jobdir = jobdir
+        self.name = jobn
+        # self.data = {}
+        self.files = []
+
+    def add_data(self, suffix):
+        self.files.append(suffix)
+
+
+
+    def __repr__(self):
+        return 'Job:' + repr((self.jobdir,self.name,self.files))
+
 @common.run_once(error=False, warn=False)
 def handler_index(args):
     jobdir = args.jobdir
     idxfile = args.index_file
     idxpath = os.path.join(jobdir, idxfile)
 
+    index = {}
     try:
         with open(idxpath, 'r') as idx:
             index = json.load(idx)
     except FileNotFoundError:
-        index = {}
+        pass
 
-    for root,_,jobs in os.walk(jobdir):
-        for job in jobs:
-            path = os.path.join(root, job)
-            print(job, path)
+    jobs = {}
+
+    for root,_,files in os.walk(jobdir):
+        for file in files:
+            path = os.path.join(root, file)
+            rpath = pathlib.PurePath(path).relative_to(jobdir)
+            jobn = str(rpath.with_suffix(''))
+
+            jobs.setdefault(jobn, Job(jobdir, jobn))
+            jobs[jobn].add_data(rpath.suffix)
+
+            # print(file, path)
+
+    print(jobs)
 
     return
     with open(idxpath, 'w') as idx:

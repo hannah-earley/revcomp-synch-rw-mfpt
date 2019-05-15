@@ -44,6 +44,7 @@ def parse_duration(s):
 
 def read_log(fin, dat=None):
     outp = {
+        'bias':None, 'dist':None, 'width':None,
         'n':None, 'm':None, 's':None, 'its':None,
         'mean':None, 'var':None, 'err':None,
         'dur':None, 'prog':None,
@@ -63,6 +64,12 @@ def read_log(fin, dat=None):
                 fields = [x.strip() for x in line.split(':')]
                 if len(fields) == 2:
                     key, val = fields
+                    if key == 'Bias':
+                        outp['bias'] = float(val)
+                    if key == 'Distance':
+                        outp['dist'] = int(val)
+                    if key == 'Constriction Width':
+                        outp['width'] = int(val)
                     if key == 'Walker Count':
                         outp['n'] = int(val)
                     if key == 'Measurement Count':
