@@ -6,12 +6,14 @@ import pathlib
 import argparse
 import rawfine
 
+COMMENT_LINE = '#'
+
 EXTS = {
     'log': '.log',
     'persist': '.dat',
     'persist-bak': '.dat~',
     'outp': '.csv',
-    'outp_raw': '.csv',
+    'outp_raw': '.csv~',
     'distr': '.dist'
 }
 
@@ -47,7 +49,9 @@ class Parameters:
         self.simulation = sim
         self.bias = float(bias)
         self.distance = int(dist)
-        self.width = int(width)
+        self.width = None
+        if width is not None:
+            self.width = int(width)
 
     def __repr__(self):
         return repr((self.simulation, self.bias, self.distance, self.width))
@@ -117,7 +121,7 @@ class Job:
                 dat = self.path + EXTS['persist']
                 with open(dat, 'r') as fh:
                     for line in fh:
-                        assert line[0] == '#'
+                        assert line.startswith(COMMENT_LINE)
                         cmd = line[1:].strip()
                         args = walk_parse(cmd)
 
@@ -154,6 +158,37 @@ class Job:
         if self._params:
             return self._params
         raise Warning("Couldn't infer job parameters for %s!" % self.name)
+
+    def check_outp(self):
+        if 'log' not in self.data:
+            raise Warning("check_outp: Job %s missing log file" % self.name)
+        if 'outp' not in self.data:
+            raise Warning("check_outp: Job %s missing outp file" % self.name)
+
+        log = self.path + EXTS['log']
+        outp = self.path + EXTS['outp']
+        dat = None
+
+        if 'persist' in self.data:
+            dat = self.path + EXTS['persist']
+
+        raw_dat = list(rawfine.read2csv(log, dat))
+        csv_dat = []
+
+        with open(outp, 'r') as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                if line.startswith(COMMENT_LINE):
+                    continue
+
+                mean, err, its = line.split(',')
+                csv_dat.append((float(mean), float(err), int(its)))
+
+        print(len(raw_dat), len(csv_dat))
+        # print(list(zip(raw_dat,csv_dat)))
+
 
 class Experiment:
     def __init__(self, params):
@@ -244,6 +279,7 @@ def handler_index(args):
 
     for jobn,job in jobs.items():
         try:
+            job.check_outp()
             params = job.get_parameters()
         except Warning as w:
             print(w)
