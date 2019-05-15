@@ -17,6 +17,11 @@ EXTS = {
 
 EXTS_rev = {v:k for k,v in EXTS.items()}
 
+TOLERANCE = {
+    'bias': 1e-5,
+    'distance': 1e-3
+}
+
 def handler_common(args):
     try:
         if args.index:
@@ -36,6 +41,39 @@ def walk_parse(args):
         args = args.split()
     known, unknown = walk_args.parse_known_args(args)
     return known
+
+class Parameters:
+    def __init__(self, sim, bias=0, dist=1, width=1):
+        self.simulation = sim
+        self.bias = float(bias)
+        self.distance = int(dist)
+        self.width = int(width)
+
+    def __repr__(self):
+        return repr((self.simulation, self.bias, self.distance, self.width))
+
+    def __eq__(self, other):
+        if self.simulation != other.simulation:
+            return False
+
+        try:
+            if abs(self.bias - other.bias)/self.bias > TOLERANCE['bias']:
+                return False
+        except ZeroDivisionError:
+            if abs(other.bias) > TOLERANCE['bias']:
+                return False
+
+        try:
+            if abs(self.distance - other.distance)/self.distance > TOLERANCE['distance']:
+                return False
+        except ZeroDivisionError:
+            if abs(other.distance) > TOLERANCE['distance']:
+                return False
+
+        if self.simulation == '2d' and self.width != other.width:
+            return False
+
+        return True
 
 class Job:
     def __init__(self, jobdir, jobn):
@@ -69,11 +107,10 @@ class Job:
                     return
 
                 sim = outp['sim']
-                bias = outp['bias'] or 0
-                dist = outp['dist'] or 1
-                width = outp['width'] or 1
-                if sim and bias and dist and width:
-                    return sim, bias, dist, width
+                if sim:
+                    return Parameters(sim, outp['bias'],
+                                           outp['dist'],
+                                           outp['width'])
 
         def method_dat():
             if 'persist' in self.data:
@@ -85,15 +122,25 @@ class Job:
                         args = walk_parse(cmd)
 
                         sim = args.sim
-                        bias = args.bias or 0
-                        dist = args.dist or 1
-                        width = args.width or 1
-                        if sim and bias and dist and width:
-                            return sim, bias, dist, width
+                        if sim:
+                            return Parameters(sim, args.bias,
+                                                   args.dist,
+                                                   args.width)
                         break
 
         def method_name():
-            pass
+            pure_name = pathlib.PurePath(self.name).parts[-1]
+            try:
+                sim, bias, *rest = pure_name.split('-')
+            except ValueError:
+                return
+
+            if sim == '1d':
+                dist, *_ = rest
+                return Parameters(sim, bias, dist)
+            elif sim == '2d':
+                width, dist, *_ = rest
+                return Parameters(sim, bias, dist, width)
 
         if self._params is None:
             self._params = False
@@ -119,6 +166,17 @@ class Experiment:
     def __repr__(self):
         return repr((self.params, self.jobs))
 
+    def resolve(self):
+        # if one job, easy to resolve
+        # otherwise, ask what to do...
+        pass
+
+    def mfpt(self):
+        pass
+
+    def distribution(self):
+        pass
+
 class ExperimentEnsemble:
     """
     Experiments are parameterised by:
@@ -134,29 +192,17 @@ class ExperimentEnsemble:
     To address, we use a simple association list...
     """
 
-    def __init__(self, tolerance_bias=1e-5, tolerance_dist=1e-3):
-        self.tolerances = {
-            'bias': tolerance_bias,
-            'dist': tolerance_dist
-        }
+    def __init__(self):
         self.experiments = []
 
-    def find(self, params):
-        s1, b1, d1, w1 = params
-        for i, ((s2, b2, d2, w2), _) in enumerate(self.experiments):
-            if s1 != s2:
-                continue
-            if abs(b1 - b2)/b1 > self.tolerances['bias']:
-                continue
-            if abs(d1 - d2)/d1 > self.tolerances['dist']:
-                continue
-            if s1 == '2d' and w1 != w2:
-                continue
-            return i
+    def find(self, params1):
+        for i, (params2, _) in enumerate(self.experiments):
+            if params1 == params2:
+                return i
 
         # expt not found, create new expt
-        expt = Experiment(params)
-        self.experiments.append((params, expt))
+        expt = Experiment(params1)
+        self.experiments.append((params1, expt))
         return len(self.experiments) - 1
 
     def __getitem__(self, params):
