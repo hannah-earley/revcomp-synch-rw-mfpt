@@ -133,22 +133,30 @@ def read_log(fin, dat=None):
                 o1 = outp.copy()
                 o2 = outq.copy()
                 o1['its'] = o2['its']
+                o1['prog'] = o2['prog']
                 if o1 != o2:
                     yield outp
 
     except FileExistsError:
         print('%s: Refusing to overwrite %s' % (fin, fout))
 
+def log2csv(outps):
+    for result in outps:
+        mean = 1 / result['mean']
+        err = result['err'] * mean * mean
+        its = result['its']
+        if its is None:
+            its = result['n'] * result['m'] * result['s']
+        yield mean, err, its
+
+def read2csv(*args, **kwargs):
+    yield from log2csv(read_log(*args, **kwargs))
+
 def rawfine(fin, fout, dat=None):
     try:
         with open(fout, open_mode) as hout:
             hout.write('#mean,stderr,weight\n')
-            for result in read_log(fin, dat):
-                mean = 1 / result['mean']
-                err = result['err'] * mean * mean
-                its = result['its']
-                if its is None:
-                    its = result['n'] * result['m'] * result['s']
+            for mean, err, its in read2csv(fin, dat):
                 hout.write('%r,%r,%d\n' % (mean, err, its))
 
     except FileExistsError:
