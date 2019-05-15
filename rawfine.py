@@ -13,6 +13,10 @@ real_fmt = '%H:%M:%S %d/%m/%y'
 unit_durs = {'y':365*86400,'d':86400,'h':3600,'m':60,'s':1,
              'ms':1e-3,'us':1e-6,'ns':1e-9,'ps':1e-12,
              'fs':1e-15,'as':1e-18,'zs':1e-21,'ys':1e-24}
+sims = {"MFPT - 1D Walk": '1d'
+       ,"MFPT - 2D Walk (Constrained/Quadrant)": '2d'
+       ,"Unit Tests": 'tu'
+       ,"Test Bed...": 'tb'}
 
 def dat_count(dat, n_=None):
     n = 0
@@ -44,6 +48,7 @@ def parse_duration(s):
 
 def read_log(fin, dat=None):
     outp = {
+        'sim':None,
         'bias':None, 'dist':None, 'width':None,
         'n':None, 'm':None, 's':None, 'its':None,
         'mean':None, 'var':None, 'err':None,
@@ -64,6 +69,8 @@ def read_log(fin, dat=None):
                 fields = [x.strip() for x in line.split(':')]
                 if len(fields) == 2:
                     key, val = fields
+                    if key == 'Running simulation':
+                        outp['sim'] = sims[val]
                     if key == 'Bias':
                         outp['bias'] = float(val)
                     if key == 'Distance':
@@ -122,7 +129,7 @@ def read_log(fin, dat=None):
 
             if outq:
                 yield outq
-            if outp != outq:
+            if outp != outq and outq is not None:
                 o1 = outp.copy()
                 o2 = outq.copy()
                 o1['its'] = o2['its']
