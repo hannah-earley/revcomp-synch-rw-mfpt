@@ -68,20 +68,6 @@ class Parameters:
         if cmp_float(self.distance, other.distance, TOLERANCE['distance'], True) != 0:
             return False
 
-        # try:
-        #     if abs(self.bias - other.bias)/self.bias > TOLERANCE['bias']:
-        #         return False
-        # except ZeroDivisionError:
-        #     if abs(other.bias) > TOLERANCE['bias']:
-        #         return False
-
-        # try:
-        #     if abs(self.distance - other.distance)/self.distance > TOLERANCE['distance']:
-        #         return False
-        # except ZeroDivisionError:
-        #     if abs(other.distance) > TOLERANCE['distance']:
-        #         return False
-
         if self.simulation == '2d' and self.width != other.width:
             return False
 
@@ -112,6 +98,9 @@ class Datum(py3_cmp):
 
     def __repr__(self):
         return repr((self.mean, self.stderr, self.n))
+
+    def __str__(self):
+        return '%r,%r,%d' % (self.mean, self.stderr, self.n)
 
 class Job:
     def __init__(self, jobdir, jobn):
@@ -222,11 +211,33 @@ class Job:
 
         lcs = common.LCS(raw_dat, csv_dat)
         com_dat = lcs.common()
-        # com_dat = longest_subseq(raw_dat, csv_dat)
 
-        print(self.name, len(raw_dat), len(csv_dat), list(map(len, com_dat)))
-        # print(list(zip(raw_dat,csv_dat)))
-        # print(com_dat)
+        diff = lcs.diff_summary()[0]
+        if diff:
+            warn = "check_outp: Job %s:\n" % self.name
+            warn += "  Inconsistent outp(%d, %s) log(%d, %s) outputs!\n" % (
+                        len(csv_dat),EXTS['outp'],len(raw_dat),EXTS['log'])
+
+            notcsv = 0
+            warn2 = "    in outp but not log (*):\n"
+            for d,k,x in diff:
+                if d < 0:
+                    warn2 += "      %4d: %s\n" % (k,x)
+                    notcsv += 1
+            if notcsv:
+                warn2 += "    * records 'in .csv but not .log' probably indicates incorrect weighting...\n"
+                warn += warn2
+
+            notlog = 0
+            warn2 = "    in log but not outp:\n"
+            for d,k,x in diff:
+                if d > 0:
+                    warn2 += "      %4d: %s (mean~%f)\n" % (k,x,1/x.mean)
+                    notlog += 1
+            if notlog:
+                warn += warn2
+
+            raise Warning(warn)
 
 
 class Experiment:
@@ -241,6 +252,7 @@ class Experiment:
         return repr((self.params, self.jobs))
 
     def resolve(self):
+        raise NotImplementedError()
         # if one job, easy to resolve
         # otherwise, ask what to do...
         pass
@@ -317,21 +329,23 @@ def handler_index(args):
             jobs.setdefault(jobn, Job(jobdir, jobn))
             jobs[jobn].add_data(rpath.suffix)
 
-            # print(file, path)
-
-    # print(jobs)
     expts = ExperimentEnsemble()
 
+    warnings = False
     for jobn,job in jobs.items():
         try:
             job.check_outp()
             params = job.get_parameters()
         except Warning as w:
             print(w)
+            warnings = True
             continue
         expts[params].add(job)
 
-    # print(expts)
+    if warnings:
+        print("\n*** Please fix the above warnings before continuing")
+        return
+
     for p,xs in expts:
         print(p,'::')
         for j,x in xs:
@@ -343,6 +357,8 @@ def handler_index(args):
         json.dump(index, idx)
 
 def handler_hist(args):
+    pass
+def handler_plot(args):
     pass
 
 if __name__ == '__main__':
@@ -366,7 +382,7 @@ if __name__ == '__main__':
                 description='Reads in data from distribution.py and produces a plot of the approximate PDF.')
     parser_hist.add_argument('-x', action='store_true',
                 help='Superimpose the exact equilibrium distribution for a reflecting boundary condition.')
-    parser_hist.handler(handler_hist)
+    # parser_hist.handler(handler_hist)
 
 
 
@@ -389,6 +405,7 @@ if __name__ == '__main__':
     parser_plot.add_argument('-w', '--widths', metavar='RANGE', nargs='?',
                 help='Which width(s) to plot.')
     parser_plot.add_argument('-f', '--format', choices=['pgf','png','eps','gui'], default='gui')
+    # parser_plot.handler(handler_plot)
 
 
 
