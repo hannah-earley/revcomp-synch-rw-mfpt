@@ -260,7 +260,7 @@ class LCS:
     def __init__(self, xs, ys):
         self.xs = xs
         self.ys = ys
-        self.compute3()
+        self.compute()
 
     @staticmethod
     def mergeSet(xs, ys):
@@ -289,68 +289,17 @@ class LCS:
 
     @staticmethod
     def unique_diff(zs, z):
-        d1,x1 = z
-        if d1 > 0:
+        d1,_,_ = z
+        if d1 >= 0:
             return zs + [z]
         lz = len(zs)
         for i in range(lz-1,-1,-1):
-            d2,x2 = zs[i]
+            d2,_,_ = zs[i]
             if d2 <= 0:
                 return zs[:i+1] + [z] + zs[i+1:]
         return [z] + zs
 
     def compute(self):
-        lx = len(self.xs)
-        ly = len(self.ys)
-
-        memo = [[None for _ in range(ly+1)] for _ in range(lx+1)]
-        for i in range(lx+1):
-            memo[i][0] = [[]]
-        for j in range(ly+1):
-            memo[0][j] = [[]]
-
-        for i,x in enumerate(self.xs):
-            for j,y in enumerate(self.ys):
-                if x == y:
-                    memo[i+1][j+1] = [zs+[x] for zs in memo[i][j]]
-                else:
-                    zss = list(LCS.mergeSet(memo[i+1][j], memo[i][j+1]))
-                    lz = max(map(len, zss))
-                    memo[i+1][j+1] = [zs for zs in zss if len(zs) == lz]
-
-        self.memo = memo
-
-    def compute2(self):
-        # Hirschberg-esque algorithm
-        # uses O(min(m,n)) space rather than O(mn)
-        xs = self.xs
-        ys = self.ys
-
-        lx = len(xs)
-        ly = len(ys)
-
-        if lx < ly:
-            lx, ly = ly, lx
-            xs, ys = ys, xs
-
-        row = lambda: [[[]]] + [None]*ly
-        memo = [[[[]] for _ in range(ly+1)], row()]
-
-        for i,x in enumerate(xs):
-            if i > 0:
-                memo = [memo[1], row()]
-
-            for j,y in enumerate(ys):
-                if x == y:
-                    memo[1][j+1] = [zs+[x] for zs in memo[0][j]]
-                else:
-                    zss = list(LCS.mergeSet(memo[1][j], memo[0][j+1]))
-                    lz = max(map(len, zss))
-                    memo[1][j+1] = [zs for zs in zss if len(zs) == lz]
-
-        self.memo = memo[1]
-
-    def compute3(self):
         # Hirschberg-esque algorithm
         # uses O(min(m,n)) space rather than O(mn)
         # we also compute the diff simultaneously
@@ -366,8 +315,10 @@ class LCS:
             xs, ys = ys, xs
 
         ud = LCS.unique_diff
-        row = lambda i: [[(0,[(-1,x) for x in xs[:i]])]] + [None]*ly
-        memo = [[[(0,[(+1,y) for y in ys[:j]])] for j in range(ly+1)], row(1)]
+        row = lambda i: [[(0,[(-1,k,x) for k,x in enumerate(xs[:i])])]] + [None]*ly
+        memo = [[[(0,[(+1,k,y) for k,y in enumerate(ys[:j])])]
+                    for j in range(ly+1)],
+                row(1)]
 
         for i,x in enumerate(xs):
             if i > 0:
@@ -375,10 +326,10 @@ class LCS:
 
             for j,y in enumerate(ys):
                 if x == y:
-                    memo[1][j+1] = [(n+1,zs+[(0,x)]) for (n,zs) in memo[0][j]]
+                    memo[1][j+1] = [(n+1,zs+[(0,(i,j),x)]) for (n,zs) in memo[0][j]]
                 else:
-                    zs1 = [(n,ud(zs, (+1,y))) for (n,zs) in memo[1][j]]
-                    zs2 = [(n,ud(zs, (-1,x))) for (n,zs) in memo[0][j+1]]
+                    zs1 = [(n,ud(zs, (+1,j,y))) for (n,zs) in memo[1][j]]
+                    zs2 = [(n,ud(zs, (-1,i,x))) for (n,zs) in memo[0][j+1]]
                     zss = list(LCS.mergeSet(zs1, zs2))
                     lz = max(n for n,_ in zss)
                     memo[1][j+1] = [(n,zs) for (n,zs) in zss if n == lz]
@@ -386,14 +337,8 @@ class LCS:
         self.memo = memo[1]
 
     def common(self):
-        seqs = [[z for (d,z) in zs if d == 0] for _,zs in self.memo[-1]]
+        seqs = [[z for (d,_,z) in zs if d == 0] for _,zs in self.memo[-1]]
         return seqs
-        
-        # uniq = []
-        # for seq in seqs:
-        #     if seq not in uniq:
-        #         uniq.append(seq)
-        # return uniq
 
     def common_str(self):
         return [''.join(zs) for _,zs in self.common()]
@@ -403,7 +348,9 @@ class LCS:
 
     def diff(self):
         return [zs for _,zs in self.memo[-1]]
-        raise NotImplementedError
+
+    def diff_summary(self):
+        return [[z for z in zs if z[0] != 0] for zs in self.diff()]
 
 
 class py3_cmp:
