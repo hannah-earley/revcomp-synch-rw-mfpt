@@ -4,45 +4,6 @@
 - use pyplot to produce useful plots automagically
 - do other useful analyses
 
-### csv/log comparison algorithm...
-- essentially a diff
-- first write an equality function to judge whether two csv triplets are equal
-    - only approximate equality as there will be differences in less significant figures..
-- anticipate following sources of variations:
-    - record in log but not csv
-        - perhaps because started job pre-csv
-        - perhaps because program crashed/failed..
-    - record in csv but not log
-        - perhaps program crash/failure
-- generate each possible alignment between sequences, assuming chronology is conserved
-    - suppose have records xs and ys
-    - for each x, find all matches in the remainder of ys
-        - this generates a series of possible partial alignments
-            - split rem(ys) on the candidate match x -> as++x++bs
-            - each alignment is represented by ((as++x:), bs)
-            - we then generate sub-alignments by considering the next x against bs
-        - prepend to these candidate alignments that corresponding to x missing in ys
-            - that is, the alignment is ((x:), rem(ys))
-            - this alignment then generates subalignments assuming x not in ys...
-- PROBLEMS:
-    - even in best case, i.e. xs==ys, this has time complexity O(2^n) for len(xs)==n...
-        - perhaps can fix by somehow ordering candidate alignments by likelihood
-        - that way can generate results lazily...
-        - can we even dynamically sort by some fitness measure?
-        - that way can return the objectively best alignments in order
-        - and minimise computational effort...
-        - we should also take into account that log _should_ be complete...
-- quick check algo:
-    - assume every csv (xs) result in log (ys) exactly once
-    - for each x, find first match in rem(ys)
-    - any skipped ys => extra results, suggest in .csv~~
-    - possible errors: may exist genuine duplicate results... not a problem?
-    - O(n)
-- slower algo:
-    - check occurence count of each x in ys, if not equal to 1 then complain...
-    - O(n^2)
-- with results, we can suggest a replacement csv and store in .csv~~...
-
 # Done
 
 ## `./walk`
