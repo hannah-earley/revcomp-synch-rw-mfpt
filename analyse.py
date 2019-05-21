@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 import os
-import common
 import json
 import pathlib
 import argparse
 import rawfine
+
+import common
+from common import cmp, py3_cmp, cmp_float, longest_subseq
 
 COMMENT_LINE = '#'
 
@@ -21,7 +23,8 @@ EXTS_rev = {v:k for k,v in EXTS.items()}
 
 TOLERANCE = {
     'bias': 1e-5,
-    'distance': 1e-3
+    'distance': 1e-3,
+    'datum': 1e-10
 }
 
 def handler_common(args):
@@ -60,24 +63,55 @@ class Parameters:
         if self.simulation != other.simulation:
             return False
 
-        try:
-            if abs(self.bias - other.bias)/self.bias > TOLERANCE['bias']:
-                return False
-        except ZeroDivisionError:
-            if abs(other.bias) > TOLERANCE['bias']:
-                return False
+        if cmp_float(self.bias, other.bias, TOLERANCE['bias'], True) != 0:
+            return False
+        if cmp_float(self.distance, other.distance, TOLERANCE['distance'], True) != 0:
+            return False
 
-        try:
-            if abs(self.distance - other.distance)/self.distance > TOLERANCE['distance']:
-                return False
-        except ZeroDivisionError:
-            if abs(other.distance) > TOLERANCE['distance']:
-                return False
+        # try:
+        #     if abs(self.bias - other.bias)/self.bias > TOLERANCE['bias']:
+        #         return False
+        # except ZeroDivisionError:
+        #     if abs(other.bias) > TOLERANCE['bias']:
+        #         return False
+
+        # try:
+        #     if abs(self.distance - other.distance)/self.distance > TOLERANCE['distance']:
+        #         return False
+        # except ZeroDivisionError:
+        #     if abs(other.distance) > TOLERANCE['distance']:
+        #         return False
 
         if self.simulation == '2d' and self.width != other.width:
             return False
 
         return True
+
+class Datum(py3_cmp):
+    def __init__(self, mean, stderr, n):
+        self.mean = mean
+        self.stderr = stderr
+        self.n = n
+
+    def __cmp__(self, other):
+        cn = cmp(self.n, other.n)
+        cm = cmp_float(self.mean, other.mean, TOLERANCE['datum'])
+        cs = cmp_float(self.stderr, other.stderr, TOLERANCE['datum'])
+
+        if cn != 0: return cn
+        if cm != 0: return cm
+        return cs
+
+    @classmethod
+    def from_tuple(cls, t):
+        return cls(*t)
+
+    @classmethod
+    def from_tuples(cls, ts):
+        return [cls(*t) for t in ts]
+
+    def __repr__(self):
+        return repr((self.mean, self.stderr, self.n))
 
 class Job:
     def __init__(self, jobdir, jobn):
@@ -172,7 +206,7 @@ class Job:
         if 'persist' in self.data:
             dat = self.path + EXTS['persist']
 
-        raw_dat = list(rawfine.read2csv(log, dat))
+        raw_dat = Datum.from_tuples(rawfine.read2csv(log, dat))
         csv_dat = []
 
         with open(outp, 'r') as fh:
@@ -184,10 +218,13 @@ class Job:
                     continue
 
                 mean, err, its = line.split(',')
-                csv_dat.append((float(mean), float(err), int(its)))
+                csv_dat.append(Datum(float(mean), float(err), int(its)))
 
-        print(len(raw_dat), len(csv_dat))
+        com_dat = longest_subseq(raw_dat, csv_dat)
+
+        print(self.name, len(raw_dat), len(csv_dat), list(map(len, com_dat)))
         # print(list(zip(raw_dat,csv_dat)))
+        # print(com_dat)
 
 
 class Experiment:
@@ -211,6 +248,9 @@ class Experiment:
 
     def distribution(self):
         pass
+
+    def __iter__(self):
+        return iter(self.jobs.items())
 
 class ExperimentEnsemble:
     """
@@ -247,6 +287,9 @@ class ExperimentEnsemble:
 
     def __repr__(self):
         return repr(self.experiments)
+
+    def __iter__(self):
+        return iter(self.experiments)
 
 @common.run_once(error=False, warn=False)
 def handler_index(args):
@@ -286,7 +329,12 @@ def handler_index(args):
             continue
         expts[params].add(job)
 
-    print(expts)
+    # print(expts)
+    for p,xs in expts:
+        print(p,'::')
+        for j,x in xs:
+            print('  ',j)
+            print('   ',x)
 
     return
     with open(idxpath, 'w') as idx:

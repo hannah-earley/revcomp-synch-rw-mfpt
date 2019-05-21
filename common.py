@@ -217,3 +217,175 @@ class CommonParser(argparse.ArgumentParser):
     def handler(self, handler=handler_none):
         self.set_defaults(handler=handler)
         return handler
+
+"""
+-- longest common subsequence algorithm
+-- inefficient - improve by memoising lcs...
+
+lcs :: Ord a => [a] -> [a] -> [[a]]
+lcs (x:xs) (y:ys)
+  | x == y = map (x:) (lcs xs ys)
+  | x /= y = longest $ mergeSet (lcs (x:xs) ys) (lcs xs (y:ys))
+lcs _ _ = [[]]
+
+mergeSet :: Ord a => [a] -> [a] -> [a]
+mergeSet [] xs = xs
+mergeSet xs [] = xs
+mergeSet (x:xs) (y:ys) = case compare x y of
+    LT -> x : mergeSet xs (y:ys)
+    EQ -> x : mergeSet xs ys
+    GT -> y : mergeSet (x:xs) ys
+
+longest :: [[a]] -> [[a]]
+longest = go 0 []
+  where
+    go _ yss [] = reverse yss
+    go n yss (xs:xss) =
+      let l = length xs in
+      case compare l n of
+        LT -> go n yss xss
+        EQ -> go n (xs:yss) xss
+        GT -> go l [xs] xss
+"""
+
+def longest_subseq_str(xs, ys, cmp=lambda a,b:a==b):
+    lx = len(xs)
+    ly = len(ys)
+
+    memo = [[None for _ in range(ly+1)] for _ in range(lx+1)]
+    for i in range(lx+1):
+        memo[i][0] = {""}
+    for j in range(ly+1):
+        memo[0][j] = {""}
+
+    for i,x in enumerate(xs):
+        for j,y in enumerate(ys):
+            if cmp(x, y):
+                memo[i+1][j+1] = {zs+x for zs in memo[i][j]}
+            else:
+                zss = memo[i+1][j].union(memo[i][j+1])
+                lz = max(map(len, zss))
+                memo[i+1][j+1] = {zs for zs in zss if len(zs) == lz}
+
+    return memo[lx][ly]
+
+class peekable:
+    def __init__(self, xi):
+        self._iter = iter(xi)
+        self._fin = False
+        self._peeked = False
+        self._cache = None
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self._fin:
+            raise StopIteration()
+
+        if not self._peeked:
+            self.peek()
+
+        self._peeked = False
+        return self._cache
+
+    def peek(self):
+        if self._peeked:
+            return self._cache
+
+        try:
+            self._cache = next(self._iter)
+            self._peeked = True
+            return self._cache
+        except StopIteration:
+            self._fin = True
+            raise
+
+    def safe_peek(self):
+        try:
+            return True, self.peek()
+        except StopIteration:
+            return False, None
+
+def mergeSet(xs, ys):
+    xi = peekable(xs)
+    yi = peekable(ys)
+
+    while True:
+        xp, x = xi.safe_peek()
+        yp, y = yi.safe_peek()
+
+        if xp:
+            if yp:
+                if x < y:
+                    yield next(xi)
+                elif x == y:
+                    yield next(xi)
+                    next(yi)
+                else:
+                    yield next(yi)
+            else:
+                yield from xi
+                break
+        else:
+            yield from yi
+            break
+
+def longest_subseq(xs, ys):
+    lx = len(xs)
+    ly = len(ys)
+
+    memo = [[None for _ in range(ly+1)] for _ in range(lx+1)]
+    for i in range(lx+1):
+        memo[i][0] = [[]]
+    for j in range(ly+1):
+        memo[0][j] = [[]]
+
+    for i,x in enumerate(xs):
+        for j,y in enumerate(ys):
+            if x == y:
+                memo[i+1][j+1] = [zs+[x] for zs in memo[i][j]]
+            else:
+                zss = list(mergeSet(memo[i+1][j], memo[i][j+1]))
+                lz = max(map(len, zss))
+                memo[i+1][j+1] = [zs for zs in zss if len(zs) == lz]
+
+    return memo[lx][ly]
+
+class py3_cmp:
+    def __eq__(self, other):
+        return self.__cmp__(other) == 0
+    def __ne__(self, other):
+        return self.__cmp__(other) != 0
+    def __gt__(self, other):
+        return self.__cmp__(other) > 0
+    def __lt__(self, other):
+        return self.__cmp__(other) < 0
+    def __ge__(self, other):
+        return self.__cmp__(other) >= 0
+    def __le__(self, other):
+        return self.__cmp__(other) <= 0
+
+def cmp(a, b):
+    try:
+        return a.__cmp__(b)
+    except AttributeError:
+        try:
+            return -b.__cmp__(a)
+        except AttributeError:
+            return (a>b) - (a<b)
+
+def cmp_float(a, b, tolerance, tol_abs=None):
+    if tol_abs is True:
+        tol_abs = tolerance
+    
+    try:
+        if abs(a - b) / a > tolerance:
+            return cmp(a,b)
+    except ZeroDivisionError:
+        if tol_abs:
+            if abs(b) > tol_abs:
+                return cmp(a,b)
+        else:
+            return cmp(a, b)
+    return 0
