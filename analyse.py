@@ -6,7 +6,7 @@ import argparse
 import rawfine
 
 import common
-from common import cmp, py3_cmp, cmp_float, longest_subseq
+from common import cmp, py3_cmp, cmp_float
 
 COMMENT_LINE = '#'
 
@@ -220,7 +220,9 @@ class Job:
                 mean, err, its = line.split(',')
                 csv_dat.append(Datum(float(mean), float(err), int(its)))
 
-        com_dat = longest_subseq(raw_dat, csv_dat)
+        lcs = common.LCS(raw_dat, csv_dat)
+        com_dat = lcs.common()
+        # com_dat = longest_subseq(raw_dat, csv_dat)
 
         print(self.name, len(raw_dat), len(csv_dat), list(map(len, com_dat)))
         # print(list(zip(raw_dat,csv_dat)))
