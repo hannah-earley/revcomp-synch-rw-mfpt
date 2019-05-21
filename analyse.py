@@ -16,7 +16,9 @@ EXTS = {
     'persist-bak': '.dat~',
     'outp': '.csv',
     'outp_raw': '.csv~',
-    'distr': '.dist'
+    'outp_fix': '.csv~~',
+    'distr': '.dist',
+    'override': '.override'
 }
 
 EXTS_rev = {v:k for k,v in EXTS.items()}
@@ -110,6 +112,9 @@ class Job:
         self.data = set()
         self.unrecognised = []
         self._params = None
+        self.overrides = {
+            'outp': set()
+        }
 
     def add_data(self, suffix):
         try:
@@ -119,6 +124,35 @@ class Job:
 
     def __repr__(self):
         return 'Job:' + repr((self.jobdir,self.name,self.data,self._params))
+
+    def get_overrides(self):
+        if 'override' not in self.data:
+            return
+
+        over = self.path + EXTS['override']
+        unknown = []
+        with open(over, 'r') as f:
+            for override in f:
+                override = override.strip()
+                try:
+                    key, arg = override.split(':',1)
+                    if key == 'outp':
+                        for idx in arg.split(','):
+                            if '-' in idx:
+                                a,b = map(int, idx.split('-'))
+                                for i in range(a,b+1):
+                                    self.overrides['outp'].add(int(i))
+                            else:
+                                self.overrides['outp'].add(int(idx))
+                    else:
+                        unknown.append(override)
+                except ValueError:
+                    unknown.append(override)
+        if unknown:
+            warn = "get_overrides: Job %s: unknown overrides:\n" % self.name
+            for over in unknown:
+                warn += "  %s\n" % over
+            raise Warning(warn)
 
     def get_parameters(self):
         def method_log():
@@ -209,24 +243,35 @@ class Job:
                 mean, err, its = line.split(',')
                 csv_dat.append(Datum(float(mean), float(err), int(its)))
 
-        lcs = common.LCS(raw_dat, csv_dat)
+        lcs = common.LCS(csv_dat, raw_dat)
         com_dat = lcs.common()
 
-        diff = lcs.diff_summary()[0]
+        diff = lcs.diff()[0]
         if diff:
+            fix = "#mean,stderr,weight\n"
+            for d,k,x in diff:
+                fix += str(x) + "\n"
+
             warn = "check_outp: Job %s:\n" % self.name
             warn += "  Inconsistent outp(%d, %s) log(%d, %s) outputs!\n" % (
                         len(csv_dat),EXTS['outp'],len(raw_dat),EXTS['log'])
 
+            overs = set()
             notcsv = 0
             warn2 = "    in outp but not log (*):\n"
             for d,k,x in diff:
                 if d < 0:
-                    warn2 += "      %4d: %s\n" % (k,x)
-                    notcsv += 1
+                    if k in self.overrides['outp']:
+                        overs.add(k)
+                    else:
+                        warn2 += "      %4d: %s\n" % (k,x)
+                        notcsv += 1
             if notcsv:
-                warn2 += "    * records 'in .csv but not .log' probably indicates incorrect weighting...\n"
+                warn2 += "    * may indicate incorrect weighting...\n"
                 warn += warn2
+            excess = self.overrides['outp'].difference(overs)
+            if excess:
+                warn += "    overriden unnecessarily: %r\n" % excess
 
             notlog = 0
             warn2 = "    in log but not outp:\n"
@@ -237,7 +282,13 @@ class Job:
             if notlog:
                 warn += warn2
 
-            raise Warning(warn)
+            warn += "  N.B. Record indices may not match line numbers\n"
+            warn += "  A candidate fix has been written to %s\n" % EXTS['outp_fix'] 
+
+            if notcsv or notlog or excess:
+                with open(self.path + EXTS['outp_fix'], 'w') as f:
+                    f.write(fix)
+                raise Warning(warn)
 
 
 class Experiment:
@@ -334,6 +385,7 @@ def handler_index(args):
     warnings = False
     for jobn,job in jobs.items():
         try:
+            job.get_overrides()
             job.check_outp()
             params = job.get_parameters()
         except Warning as w:
@@ -344,6 +396,11 @@ def handler_index(args):
 
     if warnings:
         print("\n*** Please fix the above warnings before continuing")
+        print("* For inconsistent outp/log, manually edit relevant files to resolve inconsistencies or use override*")
+        print("* For missing outp files, use rawfine.py cautiously to reconstruct")
+        print("* For missing log files, first touch the log file, then override* the relevant warnings.")
+        print("* For uninferred parameters, you may have an empty log file - add params to the log file...")
+        print("** .override files: see README.md")
         return
 
     for p,xs in expts:
