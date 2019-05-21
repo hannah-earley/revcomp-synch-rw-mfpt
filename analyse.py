@@ -21,6 +21,8 @@ EXTS = {
     'override': '.override'
 }
 
+EXT_PLAN = '.plan'
+
 EXTS_rev = {v:k for k,v in EXTS.items()}
 
 TOLERANCE = {
@@ -61,6 +63,19 @@ class Parameters:
     def __repr__(self):
         return repr((self.simulation, self.bias, self.distance, self.width))
 
+    def __str__(self):
+        sim = self.simulation
+        bias = self.bias
+        dist = self.distance
+        width = self.width
+
+        if sim == '1d':
+            return '%s-%r-%d' % (sim, bias, dist)
+        elif sim == '2d':
+            return '%s-%r-%d-%d' % (sim, bias, width, dist)
+
+        raise Warning('Parameters.__str__: cannot convert simulation type "%s" to a path name...' % sim)
+
     def __eq__(self, other):
         if self.simulation != other.simulation:
             return False
@@ -74,6 +89,49 @@ class Parameters:
             return False
 
         return True
+
+    @staticmethod
+    def from_log(fin, dat=None):
+        outp = None
+        for outp in rawfine.read_log(fin, dat):
+            pass
+        if outp is None:
+            return
+
+        sim = outp['sim']
+        if sim:
+            return Parameters(sim, outp['bias'],
+                                   outp['dist'],
+                                   outp['width'])
+
+    @staticmethod
+    def from_dat(dat):
+        with open(dat, 'r') as fh:
+            for line in fh:
+                assert line.startswith(COMMENT_LINE)
+                cmd = line[1:].strip()
+                args = walk_parse(cmd)
+
+                sim = args.sim
+                if sim:
+                    return Parameters(sim, args.bias,
+                                           args.dist,
+                                           args.width)
+                break
+
+    @staticmethod
+    def from_name(pure_name):
+        try:
+            sim, bias, *rest = pure_name.split('-')
+        except ValueError:
+            return
+
+        if sim == '1d':
+            dist, *_ = rest
+            return Parameters(sim, bias, dist)
+        elif sim == '2d':
+            width, dist, *_ = rest
+            return Parameters(sim, bias, dist, width)
 
 class Datum(py3_cmp):
     def __init__(self, mean, stderr, n):
@@ -161,47 +219,16 @@ class Job:
                 dat = self.path + EXTS['persist']
             if 'log' in self.data:
                 fin = self.path + EXTS['log']
-                outp = None
-                for outp in rawfine.read_log(fin, dat):
-                    pass
-                if outp is None:
-                    return
-
-                sim = outp['sim']
-                if sim:
-                    return Parameters(sim, outp['bias'],
-                                           outp['dist'],
-                                           outp['width'])
+                return Parameters.from_log(fin, dat)
 
         def method_dat():
             if 'persist' in self.data:
                 dat = self.path + EXTS['persist']
-                with open(dat, 'r') as fh:
-                    for line in fh:
-                        assert line.startswith(COMMENT_LINE)
-                        cmd = line[1:].strip()
-                        args = walk_parse(cmd)
-
-                        sim = args.sim
-                        if sim:
-                            return Parameters(sim, args.bias,
-                                                   args.dist,
-                                                   args.width)
-                        break
+                return Parameters.from_dat(dat)
 
         def method_name():
             pure_name = pathlib.PurePath(self.name).parts[-1]
-            try:
-                sim, bias, *rest = pure_name.split('-')
-            except ValueError:
-                return
-
-            if sim == '1d':
-                dist, *_ = rest
-                return Parameters(sim, bias, dist)
-            elif sim == '2d':
-                width, dist, *_ = rest
-                return Parameters(sim, bias, dist, width)
+            return Parameters.from_name(pure_name)
 
         if self._params is None:
             self._params = False
@@ -292,9 +319,11 @@ class Job:
 
 
 class Experiment:
-    def __init__(self, params):
+    def __init__(self, args, params):
+        self.args = args
         self.params = params
         self.jobs = {}
+        self.plan = None
 
     def add(self, job):
         self.jobs[job.name] = job
@@ -302,11 +331,121 @@ class Experiment:
     def __repr__(self):
         return repr((self.params, self.jobs))
 
+    name_cache = None
+    @classmethod
+    def scan_names(cls, jobdir):
+        if cls.name_cache is not None:
+            return
+        cls.name_cache = []
+
+        for root,_,files in os.walk(jobdir):
+            for file in files:
+                path = os.path.join(root, file)
+                rpath = pathlib.PurePath(path).relative_to(jobdir)
+                if rpath.suffix != EXT_PLAN:
+                    continue
+
+                name = rpath.with_suffix('')
+                pname = name.name
+                params = Parameters.from_name(name.name)
+
+                if params:
+                    for name2,_,params2 in cls.name_cache:
+                        if params == params2:
+                            warn = "Experiment.scan_names: duplicate plans found:\n"
+                            warn += "  %s :: %s\n" % (name2, params2)
+                            warn += "  %s :: %s\n" % (name, params)
+                            cls.name_cache = None
+                            raise Warning(warn)
+                    cls.name_cache.append((str(name), path, params))
+
+    def name(self):
+        """Generate a name for this experiment, which may consist of a group of jobs (and may acquire more jobs over time. This presents a couple problems:
+        - the bias parameter is a float, and so doesn't necessarily have a best unique representation
+        - we have some tolerance on bias and distance, so adding more jobs over time could perturb which parameters we use to build the name
+        - in addition, the order of jobs is not necessarily stable so even when not adding jobs the parameters could change order...
+
+        To address these, we should first search the directory for names whose parameters are compatible with ours. If none exists, create a new one from our parameter set. If the user doesn't like the chosen name, they can perturb it to a similar but consistent name.
+
+        We should also cache the names so each experiment doesn't rescan the directory"""
+
+        self.scan_names(self.args.jobdir)
+        params = self.params
+        for name2,path2,params2 in self.name_cache:
+            if params == params2:
+                return name2, path2
+
+        name = str(params)
+        path = os.path.join(self.args.jobdir, name + EXT_PLAN)
+        self.name_cache.append((name, path, params))
+        return name, path
+
     def resolve(self):
-        raise NotImplementedError()
-        # if one job, easy to resolve
-        # otherwise, ask what to do...
-        pass
+        if self.plan is None:
+            name, path = self.name()
+            jobs = list(self.jobs.keys())
+            jobs.sort()
+            plan = {}
+            changed = False
+
+            try:
+                if self.args.replan:
+                    raise FileNotFoundError
+
+                # load plan from last index
+                with open(path, 'r') as f:
+                    plan = json.load(f)
+
+                # update plan if jobset changed
+                jobs1 = set(jobs)
+                jobs2 = set(j['job'] for j in plan['sequence'])
+
+                for j in plan['sequence']:
+                    if j['job'] not in jobs1:
+                        j['deleted'] = True
+                        plan['staged'] = True
+                        changed = True
+
+                for job in jobs:
+                    if job not in jobs2:
+                        plan['sequence'].append({
+                            "job": job,
+                            "range": "%d:" % self.args.skip
+                        })
+                        plan['staged'] = True
+                        changed = True
+
+            except (json.decoder.JSONDecodeError, FileNotFoundError, KeyError) as e:
+                if not isinstance(e, FileNotFoundError):
+                    print("Error encountered when loading experiment plan %s:" % name)
+                    print("   " + str(e))
+                    print("   ... replanning ...")
+
+                # construct initial plan
+                plan = {
+                    "staged": True,
+                    "sequence": [{
+                        "job": job,
+                        "range" : "%d:" % self.args.skip
+                    } for job in jobs]
+                }
+
+                if not self.args.stage_single and len(jobs) == 1:
+                    del plan['staged']
+
+                changed = True
+
+            if changed:
+                with open(path, 'w') as f:
+                    json.dump(plan, f, sort_keys=True, indent=4)
+
+            self.plan = plan
+
+        if self.plan.get('staged', False):
+            warn = "Experiment.resolve: %s:\n" % self.params
+            warn += "  experiment plan currently staged...\n"
+
+            raise Warning(warn)
 
     def mfpt(self):
         pass
@@ -332,7 +471,8 @@ class ExperimentEnsemble:
     To address, we use a simple association list...
     """
 
-    def __init__(self):
+    def __init__(self, args):
+        self.args = args
         self.experiments = []
 
     def find(self, params1):
@@ -341,7 +481,7 @@ class ExperimentEnsemble:
                 return i
 
         # expt not found, create new expt
-        expt = Experiment(params1)
+        expt = Experiment(self.args, params1)
         self.experiments.append((params1, expt))
         return len(self.experiments) - 1
 
@@ -357,18 +497,8 @@ class ExperimentEnsemble:
         return iter(self.experiments)
 
 @common.run_once(error=False, warn=False)
-def handler_index(args):
+def generate_index(args):
     jobdir = args.jobdir
-    idxfile = args.index_file
-    idxpath = os.path.join(jobdir, idxfile)
-
-    index = {}
-    try:
-        with open(idxpath, 'r') as idx:
-            index = json.load(idx)
-    except FileNotFoundError:
-        pass
-
     jobs = {}
 
     for root,_,files in os.walk(jobdir):
@@ -377,10 +507,11 @@ def handler_index(args):
             rpath = pathlib.PurePath(path).relative_to(jobdir)
             jobn = str(rpath.with_suffix(''))
 
-            jobs.setdefault(jobn, Job(jobdir, jobn))
-            jobs[jobn].add_data(rpath.suffix)
+            if rpath.suffix in EXTS_rev:
+                jobs.setdefault(jobn, Job(jobdir, jobn))
+                jobs[jobn].add_data(rpath.suffix)
 
-    expts = ExperimentEnsemble()
+    expts = ExperimentEnsemble(args)
 
     warnings = False
     for jobn,job in jobs.items():
@@ -401,17 +532,35 @@ def handler_index(args):
         print("* For missing log files, first touch the log file, then override* the relevant warnings.")
         print("* For uninferred parameters, you may have an empty log file - add params to the log file...")
         print("** .override files: see README.md")
-        return
+        return False
+
+    warnings = False
+    for p,xs in expts:
+        try:
+            xs.resolve()
+        except Warning as w:
+            print(w)
+            warnings = True
+            continue
+
+    if warnings:
+        print("\n*** Please fix the above warnings before continuing")
+        print("* Staged plans need manual review before use;")
+        print("  if the plan looks right, remove the staged key")
+        return False
+
 
     for p,xs in expts:
         print(p,'::')
         for j,x in xs:
             print('  ',j)
             print('   ',x)
+        print(' ',xs.plan)
 
-    return
-    with open(idxpath, 'w') as idx:
-        json.dump(index, idx)
+    return True
+
+def handler_index(args):
+    return generate_index(args)
 
 def handler_hist(args):
     pass
@@ -421,14 +570,21 @@ def handler_plot(args):
 if __name__ == '__main__':
     parser = common.CommandParser(description='Suite of analysis tools for data generated by other tools in this repository.')
     parser.add_argument('-j', '--jobdir', default='./jobs', help='data directory')
-    parser.add_argument('-i', '--index', default=False, action='store_true',
-        help='automatically reindex first')
-    parser.add_argument('--index-file', default='_index.json')
+    # parser.add_argument('-i', '--index', default=False, action='store_true',
+    #     help='automatically reindex first')
+    # parser.add_argument('--index-file', default='_index.json')
+    parser.add_argument('--skip', default=2,
+        help='default number of outputs to skip on each job (when indexing initially)')
+    parser.add_argument('--no-stage-single', dest='stage_single', action='store_false',
+        help="don't place an initial hold on experiments consisting of single jobs")
+    parser.add_argument('--replan', action='store_true',
+        help='scrap old experiment plans and reindex')
 
 
 
     parser_idx = parser.add_command('index', aliases=['idx'],
-                help='Index files for use by other commands.',
+                help='Just index ',
+                # help='Index files for use by other commands.',
                 description='Index the files in the data directory by -bdw parameters for use by other analysis tools. For most output files, this process will succeed automatically, but where there are multiple jobs for a given parameter set you will be asked to manually resolve the ambiguity.')
     parser_idx.handler(handler_index)
 
