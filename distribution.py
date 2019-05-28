@@ -8,7 +8,6 @@ class Histogram:
         self.binning = binning
         self.counts = {}
         self.total = 0
-        pass
 
     def record_event(self, n, count=1):
         self[n] += count
@@ -24,6 +23,15 @@ class Histogram:
     def _load(self, lines):
         for line in lines:
             row0, rowf, count = [int(x.strip()) for x in line.split(',')]
+
+            if self.binning is None:
+                assert not self.counts and not self.total
+                # guess binning...
+                binn_ = rowf - row0 + 1
+                offs = row0 % binn_
+                if offs != 0:
+                    raise ValueError("Input file has invalid binning! Found %d (offset %d)..." % (binn_, offs))
+                self.binning = binn_
             
             b0 = self.which_bin(row0)
             bf = self.which_bin(rowf)
