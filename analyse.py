@@ -3,9 +3,11 @@ import os
 import json
 import pathlib
 import argparse
-import rawfine
 from functools import wraps
+import itertools as it
 
+import refine
+import rawfine
 import common
 from common import cmp, py3_cmp, cmp_float
 
@@ -175,6 +177,10 @@ class Job:
             'outp': set()
         }
 
+    def path_for(self, type_):
+        if type_ in self.data:
+            return self.path + EXTS[type_]
+
     def add_data(self, suffix):
         try:
             self.data.add(EXTS_rev[suffix])
@@ -185,10 +191,10 @@ class Job:
         return 'Job:' + repr((self.jobdir,self.name,self.data,self._params))
 
     def get_overrides(self):
-        if 'override' not in self.data:
+        over = self.path_for('override')
+        if not over:
             return
 
-        over = self.path + EXTS['override']
         unknown = []
         with open(over, 'r') as f:
             for override in f:
@@ -215,16 +221,14 @@ class Job:
 
     def get_parameters(self):
         def method_log():
-            dat = None
-            if 'persist' in self.data:
-                dat = self.path + EXTS['persist']
-            if 'log' in self.data:
-                fin = self.path + EXTS['log']
+            dat = self.path_for('persist')
+            fin = self.path_for('log')
+            if fin:
                 return Parameters.from_log(fin, dat)
 
         def method_dat():
-            if 'persist' in self.data:
-                dat = self.path + EXTS['persist']
+            dat = self.path_for('persist')
+            if dat:
                 return Parameters.from_dat(dat)
 
         def method_name():
@@ -245,17 +249,14 @@ class Job:
         raise Warning("Couldn't infer job parameters for %s!" % self.name)
 
     def check_outp(self):
-        if 'log' not in self.data:
+        log = self.path_for('log')
+        outp = self.path_for('outp')
+        dat = self.path_for('persist')
+
+        if not log:
             raise Warning("check_outp: Job %s missing log file" % self.name)
-        if 'outp' not in self.data:
+        if not outp:
             raise Warning("check_outp: Job %s missing outp file" % self.name)
-
-        log = self.path + EXTS['log']
-        outp = self.path + EXTS['outp']
-        dat = None
-
-        if 'persist' in self.data:
-            dat = self.path + EXTS['persist']
 
         raw_dat = Datum.from_tuples(rawfine.read2csv(log, dat))
         csv_dat = []
@@ -314,7 +315,7 @@ class Job:
             warn += "  A candidate fix has been written to %s\n" % EXTS['outp_fix'] 
 
             if notcsv or notlog or excess:
-                with open(self.path + EXTS['outp_fix'], 'w') as f:
+                with open(self.path_for('outp_fix'), 'w') as f:
                     f.write(fix)
                 raise Warning(warn)
 
@@ -448,8 +449,32 @@ class Experiment:
 
             raise Warning(warn)
 
+    @staticmethod
+    def read_range(r, type_=lambda x:slice(*x)):
+        fields = []
+        for field in r.split(':'):
+            field = field.strip()
+            try:
+                field = int(field)
+            except ValueError:
+                field = None
+            fields.append(field)
+        return type_(fields)
+
     def mfpt(self):
-        pass
+        data = refine.Experiment()
+        for dataset in self.plan['sequence']:
+            range_ = self.read_range(dataset['range'], list)
+            job = self.jobs[dataset['job']]
+            outp = job.path_for('outp')
+            with open(outp, 'r') as f:
+                lines = refine.Experiment.LineIterator(f)
+                data.update(it.islice(lines, *range_))
+
+        try:
+            return data.summarise()
+        except ValueError:
+            pass
 
     def distribution(self):
         pass
@@ -563,12 +588,17 @@ def indexed_handler(f):
 
 @indexed_handler
 def handler_index(args, index):
-    for params, expts in index:
+    for params, expt in index:
         print(params, '::')
-        for job,expt in expts:
-            print('  ',job)
-            print('   ',expt)
+        for jobn,job in expt:
+            print('  ',jobn)
+            print('   ',job)
         print(' ',expts.plan)
+
+@indexed_handler
+def handler_mfpt(args, index):
+    for params, expt in index:
+        print(params, '::', expt.mfpt())
 
 @indexed_handler
 def handler_hist(args, index):
@@ -599,6 +629,9 @@ if __name__ == '__main__':
                 description='Index the files in the data directory by -bdw parameters for use by other analysis tools. For most output files, this process will succeed automatically, but where there are multiple jobs for a given parameter set you will be asked to manually resolve the ambiguity.')
     parser_idx.handler(handler_index)
 
+
+    parser_mfpt = parser.add_command('mfpt', help='Report MFPTs')
+    parser_mfpt.handler(handler_mfpt)
 
 
     parser_hist = parser.add_command('histogram', aliases=['hist'],
