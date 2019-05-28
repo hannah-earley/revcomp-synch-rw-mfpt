@@ -20,6 +20,23 @@ class Experiment:
         self.agg_w += w
 
     def update(self, lines, skip=0):
+        for line in self.LineIterator(lines, skip):
+            self.insert(*line.split(','))
+
+    def summarise(self):
+        w = self.agg_w
+        if w <= 0:
+            raise ValueError("refine.Experiment: empty dataset")
+
+        mean = self.agg_mean / w
+        err = math.sqrt(self.agg_err) / w
+
+        inv_mean = 1.0 / mean
+        inv_err = err * inv_mean * inv_mean
+        return inv_mean, inv_err
+
+    @staticmethod
+    def LineIterator(lines, skip=0):
         for line in lines:
             line = line.strip()
             if line.startswith(COMMENT_LINE):
@@ -27,16 +44,7 @@ class Experiment:
             if skip > 0:
                 skip -= 1
                 continue
-            self.insert(*line.split(','))
-
-    def summarise(self):
-        w = self.agg_w
-        mean = self.agg_mean / w
-        err = math.sqrt(self.agg_err) / w
-
-        inv_mean = 1.0 / mean
-        inv_err = err * inv_mean * inv_mean
-        return inv_mean, inv_err
+            yield line
 
 def refine(file, skip=0):
     expt = Experiment()
