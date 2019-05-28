@@ -468,8 +468,8 @@ class Experiment:
             job = self.jobs[dataset['job']]
             outp = job.path_for('outp')
             with open(outp, 'r') as f:
-                lines = refine.Experiment.LineIterator(f)
-                data.update(it.islice(lines, *range_))
+                lines = common.LineIterator(f, COMMENT_LINE)
+                data._update(it.islice(lines, *range_))
 
         try:
             return data.summarise()

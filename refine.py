@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import math
+import common
 
 COMMENT_LINE='#'
 
@@ -20,7 +21,12 @@ class Experiment:
         self.agg_w += w
 
     def update(self, lines, skip=0):
-        for line in self.LineIterator(lines, skip):
+        it0 = common.LineIterator(lines, COMMENT_LINE)
+        it1 = common.SkipIterator(it0, skip)
+        self._update(it1)
+
+    def _update(self, lines):
+        for line in lines:
             self.insert(*line.split(','))
 
     def summarise(self):
@@ -34,17 +40,6 @@ class Experiment:
         inv_mean = 1.0 / mean
         inv_err = err * inv_mean * inv_mean
         return inv_mean, inv_err
-
-    @staticmethod
-    def LineIterator(lines, skip=0):
-        for line in lines:
-            line = line.strip()
-            if line.startswith(COMMENT_LINE):
-                continue
-            if skip > 0:
-                skip -= 1
-                continue
-            yield line
 
 def refine(file, skip=0):
     expt = Experiment()
