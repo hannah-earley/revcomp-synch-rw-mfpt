@@ -3,6 +3,8 @@ import argparse
 import shutil
 import textwrap
 from functools import wraps
+import sys
+import math
 
 def run_once(message=None, error=True, warn=True):
     def wrapper(f):
@@ -390,3 +392,47 @@ def cmp_float(a, b, tolerance, tol_abs=None):
         else:
             return cmp(a, b)
     return 0
+
+def LineIterator(lines, comment_prefix='#', strip=True):
+    for line in lines:
+        if strip:
+            line = line.strip()
+        if line.startswith(comment_prefix):
+            continue
+        yield line
+
+def SkipIterator(it, skip=0):
+    for x in it:
+        if skip > 0:
+            skip -= 1
+        else:
+            yield x
+
+def ProgressIterator(it, limit=float('inf'), every=None, file=sys.stderr):
+    log = lambda *a,**k: print(*a,**k,file=file,end='',flush=True)
+    count = 0
+
+    limit = abs(limit)
+    if every is None:
+        every = limit * 0.05
+
+    if every == float('inf'):
+        yield from it
+        return
+
+    stat = lambda: str(count)
+    if limit < float('inf'):
+        digits = math.ceil(math.log10(limit / every))
+        places = max(0, digits - 2)
+        fmt = '%.' + str(places) + 'f%%'
+        stat = lambda: fmt % (100*count/limit)
+
+    log(stat())
+    for x in it:
+        yield x
+        count += 1
+        if count % every == 0:
+            log('..' + stat())
+        if count >= limit:
+            break
+    print()

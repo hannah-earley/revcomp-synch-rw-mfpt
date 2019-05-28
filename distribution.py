@@ -1,93 +1,93 @@
 #!/usr/bin/env python3
 import argparse
 import sys
+import common
 
-def output_csv(counts, file=sys.stdout):
-    cl = list(counts.items())
-    cl.sort()
+class Histogram:
+    def __init__(self, binning=1):
+        self.binning = binning
+        self.counts = {}
+        self.total = 0
+        pass
 
-    print("#row0,rowf,count", file=file)
-    for r,c in cl:
-        print("%d,%d,%d" % (r,r+binn-1,c), file=file)
+    def record_event(self, n, count=1):
+        self[n] += count
+        self.total += count
+
+    def which_bin(self, n):
+        binn = self.binning
+        return (n // binn) * binn
+
+    def load(self, file):
+        self._load(common.LineIterator(file))
+
+    def _load(self, lines):
+        for line in lines:
+            row0, rowf, count = [int(x.strip()) for x in line.split(',')]
+            
+            b0 = self.which_bin(row0)
+            bf = self.which_bin(rowf)
+            if b0 != bf:
+                binn = self.binning
+                binn_ = rowf - row0 + 1
+                offs = row0 % binn
+                raise ValueError("Input file has incompatible binning! Found %d (offset %d), expecting %d (offset 0)..." % (binn_, offs, binn))
+
+            self.record_event(row0, count)
+
+    def __getitem__(self, n):
+        b = self.which_bin(n)
+        return self.counts.setdefault(b, 0)
+
+    def __setitem__(self, n, c):
+        b = self.which_bin(n)
+        self.counts[b] = c
+
+    def dump_csv(self, file=sys.stdout):
+        cl = list(self.counts.items())
+        cl.sort()
+        binn = self.binning
+
+        print("#row0,rowf,count", file=file)
+        for r,c in cl:
+            print("%d,%d,%d" % (r,r+binn-1,c), file=file)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-b', '--binning', default=1, type=int)
-    parser.add_argument('-B', action='store_true',
-                        help='rebin input file if possible')
     parser.add_argument('-s', '--skip', default=0, type=int)
     parser.add_argument('-n', '--limit', default=float('inf'), type=int)
-    parser.add_argument('-v', '--every', default=float('inf'), type=int)
-    parser.add_argument('-V', action='store_true', help='every 5%%')
+    parser.add_argument('-v', '--every', default=None, type=int)
     parser.add_argument('file', nargs='?')
     args = parser.parse_args()
 
     skip = args.skip
     binn = args.binning
-    rebin = args.B
     file = args.file
     every = args.every
     limit = args.limit
-    n = limit + 0
-    m = 0
-    verb_ = False
 
-    if args.V:
-        every = limit / 20
-
-    counts = {}
+    hist = Histogram(binn)
 
     if file:
         try:
             with open(file, 'r') as fh:
-                for line in fh:
-                    line = line.strip()
-                    if line[0] == '#':
-                        continue
-                    row0, rowf, count = [int(x.strip()) for x in line.split(',')]
-                    binn_ = rowf - row0 + 1
-                    if binn_ != binn:
-                        if rebin and binn % binn_ == 0:
-                            row0 = (row0 // binn) * binn
-                        else:
-                            raise ValueError("Input file has incorrect binning! Found %d, expecting %d..." % (binn_, binn))
-                    counts.setdefault(row0, 0)
-                    counts[row0] += count
+                hist.load(fh)
         except FileNotFoundError:
             pass
 
-    if n:
+    if limit:
         try:
-            for line in sys.stdin:
-                if skip > 0:
-                    skip -= 1
-                    continue
-
-                n -= 1
-                m += 1
+            lines = common.SkipIterator(sys.stdin, skip)
+            for line in common.ProgressIterator(lines, limit, every):
                 pos, *_ = [int(x.strip()) for x in line.split(',')]
-                row = ((-pos) // binn) * binn
-
-                counts.setdefault(row, 0)
-                counts[row] += 1
-
-                if m % every == 0:
-                    if limit < float('inf'):
-                        stat = '%.1f%%..' % (100*m/limit)
-                    else:
-                        stat = '%d..' % m
-                    print(stat, file=sys.stderr, end='', flush=True)
-                    verb_ = True
-                if n <= 0:
-                    break
+                hist.record_event(-pos)
         except KeyboardInterrupt:
             pass
 
-    if verb_:
-        print('', file=sys.stderr)
-
     if file:
         with open(file, 'w') as fh:
-            output_csv(counts, fh)
+            hist.dump_csv(fh)
     else:
-        output_csv(counts)
+        hist.dump_csv()
