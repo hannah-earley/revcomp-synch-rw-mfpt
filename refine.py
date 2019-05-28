@@ -4,36 +4,44 @@ import math
 
 COMMENT_LINE='#'
 
-def refine(file, skip=0):
-    agg_mean = 0
-    agg_err = 0
-    agg_w = 0
+class Experiment:
+    def __init__(self):
+        self.agg_mean = 0
+        self.agg_err = 0
+        self.agg_w = 0
 
-    for line in file:
-        line = line.strip()
-        if line.startswith(COMMENT_LINE):
-            continue
-        if skip > 0:
-            skip -= 1
-            continue
-
-        mean, err, w = line.split(',')
+    def insert(self, mean, err, w):
         mean = float(mean)
         err = float(err)
         w = int(w)
 
-        agg_mean += w * mean
-        agg_err += w * w * err * err
-        agg_w += w
+        self.agg_mean += w * mean
+        self.agg_err += w * w * err * err
+        self.agg_w += w
 
-    agg_mean /= agg_w
-    agg_err = math.sqrt(agg_err)
-    agg_err /= agg_w
+    def update(self, lines, skip=0):
+        for line in lines:
+            line = line.strip()
+            if line.startswith(COMMENT_LINE):
+                continue
+            if skip > 0:
+                skip -= 1
+                continue
+            self.insert(*line.split(','))
 
-    inv_mean = 1.0 / agg_mean
-    inv_err = agg_err * inv_mean * inv_mean
+    def summarise(self):
+        w = self.agg_w
+        mean = self.agg_mean / w
+        err = math.sqrt(self.agg_err) / w
 
-    return inv_mean, inv_err
+        inv_mean = 1.0 / mean
+        inv_err = err * inv_mean * inv_mean
+        return inv_mean, inv_err
+
+def refine(file, skip=0):
+    expt = Experiment()
+    expt.update(file, skip)
+    return expt.summarise()
 
 def csv_text(x):
     allowed = set(list("abcdefghijklmnopqrstuvwxyz0123456789-_ "))

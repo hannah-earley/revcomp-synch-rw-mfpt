@@ -4,6 +4,7 @@ import json
 import pathlib
 import argparse
 import rawfine
+from functools import wraps
 
 import common
 from common import cmp, py3_cmp, cmp_float
@@ -456,7 +457,7 @@ class Experiment:
     def __iter__(self):
         return iter(self.jobs.items())
 
-class ExperimentEnsemble:
+class Index:
     """
     Experiments are parameterised by:
     - sim (1d or 2d)
@@ -511,7 +512,7 @@ def generate_index(args):
                 jobs.setdefault(jobn, Job(jobdir, jobn))
                 jobs[jobn].add_data(rpath.suffix)
 
-    expts = ExperimentEnsemble(args)
+    index = Index(args)
 
     warnings = False
     for jobn,job in jobs.items():
@@ -523,7 +524,7 @@ def generate_index(args):
             print(w)
             warnings = True
             continue
-        expts[params].add(job)
+        index[params].add(job)
 
     if warnings:
         print("\n*** Please fix the above warnings before continuing")
@@ -535,7 +536,7 @@ def generate_index(args):
         return False
 
     warnings = False
-    for p,xs in expts:
+    for p,xs in index:
         try:
             xs.resolve()
         except Warning as w:
@@ -549,22 +550,32 @@ def generate_index(args):
         print("  if the plan looks right, remove the staged key")
         return False
 
+    return index
 
-    for p,xs in expts:
-        print(p,'::')
-        for j,x in xs:
-            print('  ',j)
-            print('   ',x)
-        print(' ',xs.plan)
+def indexed_handler(f):
+    @wraps(f)
+    def wrapped(args):
+        index = generate_index(args)
+        if index:
+            return f(args, index)
+        return False
+    return wrapped
 
-    return True
+@indexed_handler
+def handler_index(args, index):
+    for params, expts in index:
+        print(params, '::')
+        for job,expt in expts:
+            print('  ',job)
+            print('   ',expt)
+        print(' ',expts.plan)
 
-def handler_index(args):
-    return generate_index(args)
-
-def handler_hist(args):
+@indexed_handler
+def handler_hist(args, index):
     pass
-def handler_plot(args):
+
+@indexed_handler
+def handler_plot(args, index):
     pass
 
 if __name__ == '__main__':
@@ -595,7 +606,7 @@ if __name__ == '__main__':
                 description='Reads in data from distribution.py and produces a plot of the approximate PDF.')
     parser_hist.add_argument('-x', action='store_true',
                 help='Superimpose the exact equilibrium distribution for a reflecting boundary condition.')
-    # parser_hist.handler(handler_hist)
+    parser_hist.handler(handler_hist)
 
 
 
@@ -618,7 +629,7 @@ if __name__ == '__main__':
     parser_plot.add_argument('-w', '--widths', metavar='RANGE', nargs='?',
                 help='Which width(s) to plot.')
     parser_plot.add_argument('-f', '--format', choices=['pgf','png','eps','gui'], default='gui')
-    # parser_plot.handler(handler_plot)
+    parser_plot.handler(handler_plot)
 
 
 
