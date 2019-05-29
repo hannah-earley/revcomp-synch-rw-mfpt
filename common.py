@@ -345,20 +345,20 @@ class LCS:
                     lz = max(n for n,_ in zss)
                     memo[1][j+1] = [(n,zs) for (n,zs) in zss if n == lz]
 
-        self.memo = memo[1]
+        self.memo = memo[1][-1]
 
     def common(self):
-        seqs = [[z for (d,_,z) in zs if d == 0] for _,zs in self.memo[-1]]
+        seqs = [[z for (d,_,z) in zs if d == 0] for _,zs in self.memo]
         return seqs
 
     def common_str(self):
         return [''.join([z for z,_ in zs]) for zs in self.common()]
 
     def __len__(self):
-        return self.memo[-1][-1][0]
+        return self.memo[-1][0]
 
     def diff(self):
-        return [zs for _,zs in self.memo[-1]]
+        return [zs for _,zs in self.memo]
 
     def diff_summary(self):
         return [[z for z in zs if z[0] != 0] for zs in self.diff()]
@@ -371,9 +371,8 @@ class LCS:
             except TypeError:
                 return ij
 
-        self.memo = [[(n,[(-d,swap(ij),swap(zz)) for d,ij,zz in zs])
-                                          for n,zs in memo]
-                                          for memo in self.memo]
+        self.memo = [(n,[(-d,swap(ij),swap(zz)) for d,ij,zz in zs])
+                                                for n,zs in self.memo]
 
 
 
@@ -451,7 +450,7 @@ class LCSGreedyApprox(LCS):
             memo.append((+1, yi, y))
             yi += 1
 
-        self.memo = [[(lcs,memo)]]
+        self.memo = [(lcs,memo)]
 
 
 
