@@ -258,8 +258,13 @@ class peekable:
         except StopIteration:
             return False, None
 
+
 class LCS:
     def __init__(self, xs, ys):
+        self.swapped = False
+        if len(xs) < len(ys):
+            xs, ys = ys, xs
+            self.swapped = True
         self.xs = xs
         self.ys = ys
         self.compute()
@@ -307,18 +312,19 @@ class LCS:
         # we also compute the diff simultaneously
 
         xs = self.xs
-        ys = self.ys
-
         lx = len(xs)
+        ys = self.ys
         ly = len(ys)
 
-        if lx < ly:
-            lx, ly = ly, lx
-            xs, ys = ys, xs
+        fx = -1
+        fy = +1
+        if self.swapped:
+            fx = +1
+            fy = -1
 
         ud = LCS.unique_diff
-        row = lambda i: [[(0,[(-1,k,x) for k,x in enumerate(xs[:i])])]] + [None]*ly
-        memo = [[[(0,[(+1,k,y) for k,y in enumerate(ys[:j])])]
+        row = lambda i: [[(0,[(fx,k,x) for k,x in enumerate(xs[:i])])]] + [None]*ly
+        memo = [[[(0,[(fy,k,y) for k,y in enumerate(ys[:j])])]
                     for j in range(ly+1)],
                 row(1)]
 
@@ -328,10 +334,13 @@ class LCS:
 
             for j,y in enumerate(ys):
                 if x == y:
-                    memo[1][j+1] = [(n+1,zs+[(0,(i,j),x)]) for (n,zs) in memo[0][j]]
+                    ij = (i,j)
+                    if self.swapped:
+                        ij = (j,i)
+                    memo[1][j+1] = [(n+1,zs+[(0,ij,(x,y))]) for (n,zs) in memo[0][j]]
                 else:
-                    zs1 = [(n,ud(zs, (+1,j,y))) for (n,zs) in memo[1][j]]
-                    zs2 = [(n,ud(zs, (-1,i,x))) for (n,zs) in memo[0][j+1]]
+                    zs1 = [(n,ud(zs, (fy,j,y))) for (n,zs) in memo[1][j]]
+                    zs2 = [(n,ud(zs, (fx,i,x))) for (n,zs) in memo[0][j+1]]
                     zss = list(LCS.mergeSet(zs1, zs2))
                     lz = max(n for n,_ in zss)
                     memo[1][j+1] = [(n,zs) for (n,zs) in zss if n == lz]
@@ -343,7 +352,7 @@ class LCS:
         return seqs
 
     def common_str(self):
-        return [''.join(zs) for _,zs in self.common()]
+        return [''.join([z for z,_ in zs]) for zs in self.common()]
 
     def __len__(self):
         return self.memo[-1][-1][0]
@@ -353,6 +362,99 @@ class LCS:
 
     def diff_summary(self):
         return [[z for z in zs if z[0] != 0] for zs in self.diff()]
+
+    def invert(self):
+        def swap(ij):
+            try:
+                i,j = ij
+                return j,i
+            except TypeError:
+                return ij
+
+        self.memo = [[(n,[(-d,swap(ij),swap(zz)) for d,ij,zz in zs])
+                                          for n,zs in memo]
+                                          for memo in self.memo]
+
+
+
+
+
+
+
+class LCSGreedyApprox(LCS):
+    """
+    Any exact LCS algorithm (see above) will have a time complexity O(mn)
+    where m and n are the lengths of xs and ys. For large m,n this becomes
+    problematic, and indeed some of our datasets take too long to index
+    when using the exact algorithm.
+
+    Of course in practice we expect certain properties of our csv datasets:
+    - common subsequences between outp and log are likely long and contiguous
+    - each datum should hopefully appear precisely once
+
+    As such, below we present a greedy approximate algorithm:
+    - worst case is when no y appears in xs, O(mn)
+    - best case is when xs==ys, O(m+n)
+    - typical case is something like O(kn)
+      where k is the number of ys not found in xs
+    - if each x and y are unique in xs and ys, then it should be exact...
+
+    For each y in turn, we greedily search for it in xs
+    - if we find it, we mark it as part of the common subseq
+        - mark intervening xs as deleted
+        - therefore, if there is a longer cs which doesn't include this y, we will not find it
+    - if we don't, we mark the y as inserted
+    """
+
+    def __init__(self, xs, ys):
+        self.xs = xs
+        self.ys = ys
+        self.compute()
+
+    def compute(self):
+        xs = self.xs
+        lx = len(xs)
+        ys = self.ys
+        ly = len(ys)
+
+        xi = 0
+        yi = 0
+        lcs = 0
+        memo = []
+
+        while xi < lx and yi < ly:
+            y = ys[yi]
+            found = False
+
+            for xj,x in enumerate(xs[xi:]):
+                if x == y:
+                    for x2 in xs[xi:xi+xj]:
+                        memo.append((-1, xi, x2))
+                        xi += 1
+
+                    memo.append((0, (xi,yi), (x,y)))
+                    xi += 1
+                    yi += 1
+                    lcs += 1
+
+                    found = True
+                    break
+
+            if not found:
+                memo.append((+1, yi, y))
+                yi += 1
+
+        for x in xs[xi:]:
+            memo.append((-1, xi, x))
+            xi += 1
+        for y in ys[yi:]:
+            memo.append((+1, yi, y))
+            yi += 1
+
+        self.memo = [[(lcs,memo)]]
+
+
+
 
 
 class py3_cmp:

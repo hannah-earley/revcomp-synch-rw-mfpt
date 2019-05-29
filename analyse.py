@@ -281,13 +281,19 @@ class Job:
                 mean, err, its = line.split(',')
                 csv_dat.append(Datum(float(mean), float(err), int(its)))
 
-        lcs = common.LCS(csv_dat, raw_dat)
+        # lcs = common.LCS(csv_dat, raw_dat)
+        lcs = common.LCSGreedyApprox(raw_dat, csv_dat)
+        lcs.invert()
         com_dat = lcs.common()
 
         diff = lcs.diff()[0]
         if diff:
             fix = "#mean,stderr,weight\n"
             for d,k,x in diff:
+                try:
+                    x,_ = x
+                except TypeError:
+                    pass
                 fix += str(x) + "\n"
 
             warn = "check_outp: Job %s:\n" % self.name
