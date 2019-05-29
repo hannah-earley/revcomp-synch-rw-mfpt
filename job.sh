@@ -1,4 +1,5 @@
 #!/bin/bash
+type=2
 bias=0
 dist=1
 widt=1
@@ -14,7 +15,7 @@ usage () {
     echo "    -P           display generated path and exit"
     echo
     echo "  - Otherwise options same as for ./walk"
-    echo "  - -2v is added to options automatically"
+    echo "  - 2D verbose is default"
     echo "  - Output filenames will be generated from"
     echo "    the supplied bias and supplied to ./walk"
     echo "  - The second form is used to generate histogram"
@@ -25,9 +26,9 @@ usage () {
     ./distribution.py -h
 }
 
-argv=()
+argv=(-v)
 options () {
-    while getopts ":b:d:w:S:hP" o; do
+    while getopts ":b:d:w:S:hP12" o; do
         case "${o}" in
             b)
                 bias="${OPTARG}"
@@ -44,15 +45,21 @@ options () {
             S)
                 suff="-${OPTARG}"
                 ;;
+            P)
+                disp_path=1
+                ;;
+            1)
+                type=1
+                ;;
+            2)
+                type=2
+                ;;
             h)
                 usage 1>&2
                 exit 1
                 ;;
             \?|:)
                 argv+=("-${OPTARG}")
-                ;;
-            P)
-                disp_path=1
                 ;;
         esac
     done
@@ -75,40 +82,49 @@ while [ "$OPTIND" -le "$#" ]; do
 done
 
 dir="./jobs"
-file="2d-$bias-$widt-$dist$suff"
-log="$dir/$file.log"
-csv="$dir/$file.csv"
-dat="$dir/$file.dat"
-hst="$dir/$file.dist"
+
+if [ "${type}" = "1" ]; then
+    file="1d-${bias}-${dist}${suff}"
+elif [ "${type}" = "2" ]; then
+    file="2d-${bias}-${widt}-${dist}${suff}"
+else
+    echo "Unknown type ${type}"
+    exit 1
+fi
+
+log="${dir}/${file}.log"
+csv="${dir}/${file}.csv"
+dat="${dir}/${file}.dat"
+hst="${dir}/${file}.dist"
 
 mkdir -p "$dir"
-if [ "$disp_path" -eq "1" ]; then
-    echo "$dir/$file"
+if [ "${disp_path}" -eq "1" ]; then
+    echo "${dir}/${file}"
     exit 0
 fi
 
-argv+=(-2 -v)
-argv+=(-p "$dat")
-argv+=(-q "$csv")
+argv+=("-${type}")
+argv+=(-p "${dat}")
+argv+=(-q "${csv}")
 
 if [ -z "${argh+x}" ]; then
     # first usage, regular mfpt job
     # run and catch errors and signals properly...
 
     _sig() { 
-      kill -TERM "$child"
+      kill -TERM "${child}"
     }
 
     spin() {
-        wait "$child" || spin
+        wait "${child}" || spin
     }
 
     trap _sig SIGINT SIGTERM
     trap spin EXIT
 
-    echo "#" "$0" "$@" >> "$log"
-    echo "#" ./walk "${argv[@]}" >> "$log"
-    ./walk "${argv[@]}" > >(tee -a "$log") 2>&1 &
+    echo "#" "$0" "$@" >> "${log}"
+    echo "#" ./walk "${argv[@]}" >> "${log}"
+    ./walk "${argv[@]}" > >(tee -a "${log}") 2>&1 &
     child=$!
 
 else
@@ -116,6 +132,6 @@ else
     # no need to catch signals differently here...
 
     argv+=(-r)
-    ./walk "${argv[@]}" | ./distribution.py "${argh[@]}" -- "$hst"
+    ./walk "${argv[@]}" | ./distribution.py "${argh[@]}" -- "${hst}"
 
 fi
