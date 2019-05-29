@@ -84,8 +84,9 @@ def read_log(fin, dat=None):
                     if key == 'Sample Window':
                         outp['s'] = int(val)
                     if key == 'Persisting to':
-                        dat = val
-                        outp['n'] = dat_count(dat, outp['n'])
+                        if outp['n'] is None:
+                            dat = val
+                            outp['n'] = dat_count(dat, outp['n'])
 
                 if line.startswith('its:'):
                     matches = its_re.match(line)
