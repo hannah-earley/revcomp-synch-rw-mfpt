@@ -21,11 +21,11 @@ class Histogram:
         self._load(common.LineIterator(file))
 
     def __iter__(self):
-        binn_ = self.binning - 1
+        binn = self.binning
         cl = list(self.counts.items())
         cl.sort()
         for r,c in cl:
-            yield r, r + binn_, c
+            yield r, r + binn, c
 
     def columns(self):
         return zip(*self)
@@ -64,7 +64,42 @@ class Histogram:
     def dump_csv(self, file=sys.stdout):
         print("#row0,rowf,count", file=file)
         for r0,rf,c in self:
-            print("%d,%d,%d" % (r0,rf,c), file=file)
+            print("%d,%d,%d" % (r0,rf-1,c), file=file)
+
+class ExactHist:
+    def raw(self, row):
+        return 0
+    def between(self, row0, rowf):
+        return sum(self.raw(row) for row in range(row0, rowf))
+
+class Exact1D:
+    class Standard(ExactHist):
+        def __init__(self, bias):
+            self.bias = bias
+            self.p = 0.5 * (1 + bias)
+            self.q = 1 - self.p
+            self.x0 = bias / self.p
+            self.t = (1 - bias) / (1 + bias)
+
+        def raw(self, row):
+            row = abs(row)
+            return self.x0 * (self.t ** row)
+
+    class Teleporting(Standard):
+        def __init__(self, bias, distance):
+            super().__init__(bias)
+            self.distance = s = distance
+            del self.x0
+            self.pb = self.p / bias
+            self.x1 = 1 / (self.pb * s)
+            self.x1pb = 1 / s
+            self.xs = self.x1pb * (1 - self.t**s)
+
+        def raw(self, row):
+            row = abs(row)
+            if row >= self.distance:
+                return self.xs * (self.t ** (row - self.distance))
+            return self.x1pb * (1 - self.t**row)
 
 
 if __name__ == '__main__':

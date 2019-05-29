@@ -651,9 +651,17 @@ def handler_hist(args, index):
         file = expt.path_for('.png')
 
         if hist.total:
-            rows, _, counts = hist.columns()
+            row0s, rowfs, counts = hist.columns()
+            freqs = [c/hist.total for c in counts]
+
             fig, ax = plt.subplots()
-            ax.plot(rows, counts)
+            ax.plot(row0s, freqs)
+
+            if params.simulation == '1d':
+                ex = distribution.Exact1D.Teleporting(params.bias, params.distance)
+                freqs2 = [ex.between(r0,rf) for r0,rf in zip(row0s, rowfs)]
+                ax.plot(row0s, freqs2)
+
             ax.grid()
             fig.savefig(file)
             plt.show()
