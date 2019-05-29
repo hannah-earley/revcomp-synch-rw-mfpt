@@ -13,6 +13,10 @@ import common
 import distribution
 from common import cmp, py3_cmp, cmp_float
 
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+
 COMMENT_LINE = '#'
 
 EXTS = {
@@ -182,8 +186,8 @@ class Job:
             'outp': set()
         }
 
-    def path_for(self, type_):
-        if type_ in self.data:
+    def path_for(self, type_, force=False):
+        if force or type_ in self.data:
             return self.path + EXTS[type_]
 
     def add_data(self, suffix):
@@ -320,7 +324,7 @@ class Job:
             warn += "  A candidate fix has been written to %s\n" % EXTS['outp_fix'] 
 
             if notcsv or notlog or excess:
-                with open(self.path_for('outp_fix'), 'w') as f:
+                with open(self.path_for('outp_fix', True), 'w') as f:
                     f.write(fix)
                 raise Warning(warn)
 
@@ -348,11 +352,13 @@ class Experiment:
         for root,_,files in os.walk(jobdir):
             for file in files:
                 path = os.path.join(root, file)
-                rpath = pathlib.PurePath(path).relative_to(jobdir)
+                ppath = pathlib.PurePath(path)
+                rpath = ppath.relative_to(jobdir)
                 if rpath.suffix != EXT_PLAN:
                     continue
 
                 name = rpath.with_suffix('')
+                bpath = ppath.with_suffix('')
                 pname = name.name
                 params = Parameters.from_name(name.name)
 
@@ -364,7 +370,7 @@ class Experiment:
                             warn += "  %s :: %s\n" % (name, params)
                             cls.name_cache = None
                             raise Warning(warn)
-                    cls.name_cache.append((str(name), path, params))
+                    cls.name_cache.append((str(name), str(bpath), params))
 
     def name(self):
         """Generate a name for this experiment, which may consist of a group of jobs (and may acquire more jobs over time. This presents a couple problems:
@@ -383,13 +389,19 @@ class Experiment:
                 return name2, path2
 
         name = str(params)
-        path = os.path.join(self.args.jobdir, name + EXT_PLAN)
+        path = os.path.join(self.args.jobdir, name)
         self.name_cache.append((name, path, params))
         return name, path
 
+    def path_for(self, ext=EXT_PLAN):
+        _, path = self.name()
+        return path + ext
+
     def resolve(self):
         if self.plan is None:
-            name, path = self.name()
+            name, _ = self.name()
+            pplan = self.path_for()
+
             jobs = list(self.jobs.keys())
             jobs.sort()
             plan = {}
@@ -400,7 +412,7 @@ class Experiment:
                     raise FileNotFoundError
 
                 # load plan from last index
-                with open(path, 'r') as f:
+                with open(pplan, 'r') as f:
                     plan = json.load(f)
 
                 # update plan if jobset changed
@@ -443,7 +455,7 @@ class Experiment:
                 changed = True
 
             if changed:
-                with open(path, 'w') as f:
+                with open(pplan, 'w') as f:
                     json.dump(plan, f, sort_keys=True, indent=4)
 
             self.plan = plan
@@ -496,7 +508,8 @@ class Experiment:
                     if fid not in read:
                         read.add(fid)
                         hist.load(f)
-        hist.dump_csv()
+
+        return hist
 
 
     def __iter__(self):
@@ -626,18 +639,19 @@ def handler_mfpt(args, index):
 
 @indexed_handler
 def handler_hist(args, index):
-    params = None
-    if args.P:
-        params = Parameters.from_name(args.P)
-    if args.params:
-        assert params is None
-        args_ = args.params
-        if args_[0] == '--':
-            args_ = args_[1:]
-        params = Parameters.from_args(args_)
+    for params, expt in index:
+        print(params)
+        hist = expt.distribution()
+        file = expt.path_for('.png')
 
-    if params in index:
-        index[params].distribution()
+        if hist.total:
+            rows, _, counts = hist.columns()
+            fig, ax = plt.subplots()
+            ax.plot(rows, counts)
+            ax.grid()
+            fig.savefig(file)
+            plt.show()
+
 
 @indexed_handler
 def handler_plot(args, index):
@@ -669,14 +683,14 @@ if __name__ == '__main__':
     parser_hist = parser.add_command('histogram', aliases=['hist'],
                 help='Generate histograms / approximate PDF plots.',
                 description='Reads in data from distribution.py and produces a plot of the approximate PDF.')
-    parser_hist.add_argument('-x', action='store_true',
-                help='Superimpose the exact equilibrium distribution for a reflecting boundary condition.')
-    parser_hist.add_argument('--raw', action='store_true',
-                help='Dump raw histogram output')
-    parser_hist.add_argument('-P',
-                help='Specify experiment in jobname format, e.g. 1d-0.001-5')
-    parser_hist.add_argument('params', nargs=argparse.REMAINDER,
-                help='Specify experiment in ./walk format, e.g. -- -2v -b 0.1 -d 10 -w 3')
+    # parser_hist.add_argument('-x', action='store_true',
+    #             help='Superimpose the exact equilibrium distribution for a reflecting boundary condition.')
+    # parser_hist.add_argument('--raw', action='store_true',
+    #             help='Dump raw histogram output')
+    # parser_hist.add_argument('-P',
+    #             help='Specify experiment in jobname format, e.g. 1d-0.001-5')
+    # parser_hist.add_argument('params', nargs=argparse.REMAINDER,
+    #             help='Specify experiment in ./walk format, e.g. -- -2v -b 0.1 -d 10 -w 3')
     parser_hist.handler(handler_hist)
 
 

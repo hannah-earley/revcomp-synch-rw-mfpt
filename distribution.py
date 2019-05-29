@@ -20,6 +20,16 @@ class Histogram:
     def load(self, file):
         self._load(common.LineIterator(file))
 
+    def __iter__(self):
+        binn_ = self.binning - 1
+        cl = list(self.counts.items())
+        cl.sort()
+        for r,c in cl:
+            yield r, r + binn_, c
+
+    def columns(self):
+        return zip(*self)
+
     def _load(self, lines):
         for line in lines:
             row0, rowf, count = [int(x.strip()) for x in line.split(',')]
@@ -52,13 +62,9 @@ class Histogram:
         self.counts[b] = c
 
     def dump_csv(self, file=sys.stdout):
-        cl = list(self.counts.items())
-        cl.sort()
-        binn = self.binning
-
         print("#row0,rowf,count", file=file)
-        for r,c in cl:
-            print("%d,%d,%d" % (r,r+binn-1,c), file=file)
+        for r0,rf,c in self:
+            print("%d,%d,%d" % (r0,rf,c), file=file)
 
 
 if __name__ == '__main__':
