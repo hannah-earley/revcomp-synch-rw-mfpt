@@ -670,9 +670,17 @@ def handler_hist(args, index):
                 freqs2 = [ex.between(r0,rf) for r0,rf in zip(row0s, rowfs)]
                 ax.plot(row0s, freqs2)
 
+            elif params.simulation == '2d':
+                ex = distribution.Exact2D.Reversible(params.bias, params.width)
+                freqs2 = [ex.between(r0,rf) for r0,rf in zip(row0s, rowfs)]
+                ax.plot(row0s, freqs2)
+
             ax.grid()
             fig.savefig(file)
-            # plt.show()
+
+            if params.simulation == '2d':
+                # plt.show()
+                pass
 
 
 @indexed_handler

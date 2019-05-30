@@ -73,7 +73,7 @@ class ExactHist:
         return sum(self.raw(row) for row in range(row0, rowf))
 
 class Exact1D:
-    class Standard(ExactHist):
+    class Reversible(ExactHist):
         def __init__(self, bias):
             self.bias = bias
             self.p = 0.5 * (1 + bias)
@@ -85,7 +85,7 @@ class Exact1D:
             row = abs(row)
             return self.x0 * (self.t ** row)
 
-    class Teleporting(Standard):
+    class Teleporting(Reversible):
         def __init__(self, bias, distance):
             super().__init__(bias)
             if bias == 0:
@@ -106,6 +106,20 @@ class Exact1D:
             if row >= self.distance:
                 return self.xs * (self.t ** (row - self.distance))
             return self.x1pb * (1 - self.t**row)
+
+class Exact2D:
+    class Reversible(ExactHist):
+        def __init__(self, bias, width):
+            self.bias = bias
+            self.p = 0.5 * (1 + bias)
+            self.q = 1 - self.p
+            self.w = width
+            self.t = (1 - bias) / (1 + bias)
+            self.xw0 = (bias / self.p) * bias / (self.q + bias*width)
+
+        def raw(self, row):
+            wr = abs(row) + 1
+            return self.xw0 * (self.t ** (wr - self.w)) * wr
 
 
 if __name__ == '__main__':
