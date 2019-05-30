@@ -460,10 +460,30 @@ struct LinWalkStepDistr32 {
 
 template<typename S>
 void mfpt1d_seed(double bias, std::vector<S>& ensemble) {
+    const double BIAS_THRESH = 0.0001;
+    if (bias < BIAS_THRESH)
+        bias = BIAS_THRESH;
+
     pcg32 rng = fresh_rng();
     std::geometric_distribution<S> seed_distr(2*bias/(1+bias));
-    for (S& w : ensemble)
+
+    // 1D walks from an even distance conserve parity,
+    // therefore the parity ratio (even:odd) established here
+    // may give rise to separate populations which can affect
+    // results (most prominent in histograms where it leads
+    // to jaggedness).
+    //
+    // To prevent this, we guarantee equal parity here. This
+    // is achieved by forcing even entries to be even and odd
+    // odd
+
+    int parity = 0;
+    for (S& w : ensemble) {
         w = -seed_distr(rng);
+        if ((parity - w) % 2 != 0)
+            w--;
+        parity = 1 - parity;
+    }
 }
 
 template <typename S>
@@ -484,7 +504,7 @@ template <typename S>
 void mfpt1d(double bias, S init, WalkConfig wc) {
     Params1D<S> params(init, bias);
     std::vector<S> ensemble(wc.n, params.init);
-    if (bias > 0) mfpt1d_seed(bias, ensemble);
+    mfpt1d_seed(bias, ensemble);
 
     walk_loop(ensemble, wc, [](S& w, pcg32& rng, size_t& r, Params1D<S>& params) {
         bool right = params.pt >= rng();
