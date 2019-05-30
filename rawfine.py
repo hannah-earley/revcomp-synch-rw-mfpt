@@ -3,10 +3,11 @@ import os.path
 import argparse
 import datetime
 import re
+import math
 
 open_mode = 'x'
 its_re = re.compile(r'^its: +([0-9]+)$')
-mean_re = re.compile(r'^mean:([0-9.e+-]+) \(±([0-9.e+-]+)\) var:([0-9.e+-]+)$')
+mean_re = re.compile(r'^mean:([0-9.e+-]+|inf) \(±([0-9.e+-]+|nan)\) var:([0-9.e+-]+|nan)$')
 syst_re = re.compile(r'^(CPU|Wall): +(.*) \((.*)\)$')
 real_re = re.compile(r'^Real: (.*) - (.*)$')
 real_fmt = '%H:%M:%S %d/%m/%y'
@@ -94,9 +95,24 @@ def read_log(fin, dat=None):
 
                 if line.startswith('mean:'):
                     matches = mean_re.match(line)
-                    outp['mean'] = float(matches.group(1))
-                    outp['err'] = float(matches.group(2))
-                    outp['var'] = float(matches.group(3))
+                    if not matches:
+                        print(fin, line)
+                        raise ValueError
+
+                    mean_ = float(matches.group(1))
+                    err_ = float(matches.group(2))
+                    var_ = float(matches.group(3))
+
+                    fin = math.isfinite
+                    if not (fin(mean_) and fin(err_) and fin(var_)):
+                        if outq:
+                            yield outq
+                        outq = None
+                        continue
+
+                    outp['mean'] = mean_
+                    outp['err'] = err_
+                    outp['var'] = var_
 
                     if outq:
                         yield outq
@@ -107,7 +123,9 @@ def read_log(fin, dat=None):
                     matches = real_re.match(line)
                     t0 = datetime.datetime.strptime(matches.group(1), real_fmt)
                     t1 = datetime.datetime.strptime(matches.group(2), real_fmt)
-                    outq['dur'] = outp['dur'] = t1 - t0
+                    outp['dur'] = t1 - t0
+                    if outq is not None:
+                        outq['dur'] = outp['dur']
 
                 elif line.startswith('CPU:') or line.startswith('Wall:'):
                     matches = syst_re.match(line)
@@ -117,8 +135,12 @@ def read_log(fin, dat=None):
                     tot_ = matches.group(3)
                     loop = parse_duration(loop_)
                     tot = parse_duration(tot_)
-                    outq[type_] = outp[type_] = (loop, tot)
-                    outq[type__] = outp[type__] = (loop_, tot_)
+
+                    outp[type_] = (loop, tot)
+                    outp[type__] = (loop_, tot_)
+                    if outq is not None:
+                        outq[type_] = outp[type_]
+                        outq[type__] = outp[type__]
 
                 elif line.startswith('0%..'):
                     progs = line.split('..')

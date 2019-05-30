@@ -16,6 +16,10 @@ class Experiment:
         err = float(err)
         w = int(w)
 
+        fin = math.isfinite
+        if not (fin(mean) and fin(err)):
+            return
+
         self.agg_mean += w * mean
         self.agg_err += w * w * err * err
         self.agg_w += w
