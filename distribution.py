@@ -88,6 +88,9 @@ class Exact1D:
     class Teleporting(Standard):
         def __init__(self, bias, distance):
             super().__init__(bias)
+            if bias == 0:
+                return
+
             self.distance = s = distance
             del self.x0
             self.pb = self.p / bias
@@ -96,6 +99,9 @@ class Exact1D:
             self.xs = self.x1pb * (1 - self.t**s)
 
         def raw(self, row):
+            if self.bias == 0:
+                return 0
+            
             row = abs(row)
             if row >= self.distance:
                 return self.xs * (self.t ** (row - self.distance))
