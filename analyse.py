@@ -6,6 +6,7 @@ import argparse
 from functools import wraps
 import itertools as it
 import stat
+import math
 
 import refine
 import rawfine
@@ -279,7 +280,14 @@ class Job:
                     continue
 
                 mean, err, its = line.split(',')
-                csv_dat.append(Datum(float(mean), float(err), int(its)))
+                mean = float(mean)
+                err = float(err)
+                its = int(its)
+                fin = math.isfinite
+                if not (fin(mean) and fin(err)):
+                    continue
+
+                csv_dat.append(Datum(mean, err, its))
 
         # lcs = common.LCS(csv_dat, raw_dat)
         lcs = common.LCSGreedyApprox(raw_dat, csv_dat)
@@ -664,7 +672,7 @@ def handler_hist(args, index):
 
             ax.grid()
             fig.savefig(file)
-            plt.show()
+            # plt.show()
 
 
 @indexed_handler
