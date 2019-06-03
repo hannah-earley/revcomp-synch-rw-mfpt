@@ -6,6 +6,8 @@ widt=1
 suff=
 disp_path=0
 unif=0
+padw=0
+padd=0
 
 usage () {
     echo "Usage: $0 [OPTIONS]"
@@ -14,6 +16,8 @@ usage () {
     echo "    -S suffix    suffix/variant for the filename/output,"
     echo "                 useful for concurrent runs of a given job"
     echo "    -P           display generated path and exit"
+    echo "    -A padding   pad distance by n zeroes"
+    echo "    -B padding   pad width by n zeroes"
     echo
     echo "  - Otherwise options same as for ./walk"
     echo "  - 2D verbose is default"
@@ -29,7 +33,7 @@ usage () {
 
 argv=(-v)
 options () {
-    while getopts ":b:d:w:S:hP12" o; do
+    while getopts ":b:d:w:S:A:B:hP12" o; do
         case "${o}" in
             b)
                 bias="${OPTARG}"
@@ -45,6 +49,10 @@ options () {
                 ;;
             S)
                 suff="-${OPTARG}"
+                ;;
+            A)  padd="${OPTARG}"
+                ;;
+            B)  padw="${OPTARG}"
                 ;;
             P)
                 disp_path=1
@@ -101,6 +109,29 @@ while [ "$OPTIND" -le "$#" ]; do
 done
 
 dir="./jobs"
+
+yes2 () {
+    trap - SIGPIPE
+    expletive="$1"
+    while true; do
+        echo -n "$expletive" || exit
+    done
+}
+
+pad () {
+    with="$1"
+    tot="$2"
+    str="$3"
+    len=${#str}
+    rem=$((tot-len))
+    if [ "$rem" -gt "0" ]; then
+        yes2 "$with" | head -c "$rem"
+    fi
+    echo -n "$str"
+}
+
+widt=$(pad "0" "$padw" "$widt")
+dist=$(pad "0" "$padd" "$dist")
 
 if [ "${type}" = "1" ]; then
     file="1d-${bias}-${dist}${suff}"
