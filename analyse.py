@@ -512,6 +512,36 @@ class Experiment:
         except ValueError:
             pass
 
+    def mtimes(self):
+        def gmt(path, old=None):
+            try:
+                new = os.path.getmtime(path)
+            except (TypeError, FileNotFoundError):
+                return old
+            if old:
+                return max(new, old)
+            return new
+
+        tdistr = None
+        thist = None
+
+        for dataset in self.plan['sequence']:
+            job = self.jobs[dataset['job']]
+
+            distr = job.path_for('distr')
+            tdistr = gmt(distr, tdistr)
+
+        hist = self.path_for('.png')
+        thist = gmt(hist, thist)
+
+        return {
+            'distr': tdistr,
+            'hist': thist
+        }
+
+
+
+
     def distribution(self):
         hist = distribution.Histogram(None)
         read = set()
@@ -667,6 +697,12 @@ def handler_mfpt(args, index):
 @indexed_handler
 def handler_hist(args, index):
     for params, expt in index:
+        mtimes = expt.mtimes()
+        if mtimes['distr'] and mtimes['hist']:
+            if mtimes['hist'] > mtimes['distr']:
+                if not args.all:
+                    continue
+
         hist = expt.distribution()
         file = expt.path_for('.png')
 
@@ -709,6 +745,11 @@ def handler_hist(args, index):
 
 
 @indexed_handler
+def handler_dist(args, index):
+    pass
+
+
+@indexed_handler
 def handler_plot(args, index):
     pass
 
@@ -737,16 +778,25 @@ if __name__ == '__main__':
 
     parser_hist = parser.add_command('histogram', aliases=['hist'],
                 help='Generate histograms / approximate PDF plots.',
-                description='Reads in data from distribution.py and produces a plot of the approximate PDF.')
-    # parser_hist.add_argument('-x', action='store_true',
-    #             help='Superimpose the exact equilibrium distribution for a reflecting boundary condition.')
-    # parser_hist.add_argument('--raw', action='store_true',
-    #             help='Dump raw histogram output')
-    # parser_hist.add_argument('-P',
-    #             help='Specify experiment in jobname format, e.g. 1d-0.001-5')
-    # parser_hist.add_argument('params', nargs=argparse.REMAINDER,
-    #             help='Specify experiment in ./walk format, e.g. -- -2v -b 0.1 -d 10 -w 3')
+                description='Reads in data from distribution.py and produces a plot of the approximate PDF. By default only regenerates plots where the distribution is newer than the plot.')
+    parser_hist.add_argument('-a', '--all', action='store_true',
+                help='Generate histograms for all jobs')
     parser_hist.handler(handler_hist)
+
+
+
+    parser_dist = parser.add_command('distribution', aliases=['dist'],
+                help='Generate distributions.',
+                description='For each job found, generate a distribution. By default we skip jobs which already have an associated .dist file, but this can be overriden with --all.')
+    parser_dist.add_argument('-a', '--all', action='store_true',
+                help='Generate distributions for all jobs')
+    parser_dist.add_argument('--regenerate', action='store_true',
+                help='Backup old distributions and regenerate')
+    parser_dist.add_argument('-n', '--limit', default=10000000,
+                help='Datums to sample, default is 1e7.')
+    parser_dist.add_argument('params', nargs=argparse.REMAINDER,
+                help='Specify parameters for distribution.py')
+    parser_dist.handler(handler_dist)
 
 
 
