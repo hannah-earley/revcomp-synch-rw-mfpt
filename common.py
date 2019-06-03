@@ -5,6 +5,10 @@ import textwrap
 from functools import wraps
 import sys
 import math
+from contextlib import contextmanager
+import time
+
+SHOW_TIMERS = False
 
 def run_once(message=None, error=True, warn=True):
     def wrapper(f):
@@ -537,3 +541,16 @@ def ProgressIterator(it, limit=float('inf'), every=None, file=sys.stderr):
         if count >= limit:
             break
     print()
+
+@contextmanager
+def timer(name="task"):
+    if SHOW_TIMERS:
+        if not isinstance(name, str):
+            name = repr(name)
+        print("> timing %s..." % (name,))
+        start = time.time()
+        yield
+        end = time.time()
+        print("> timed %s...%r" % (name, end-start))
+    else:
+        yield

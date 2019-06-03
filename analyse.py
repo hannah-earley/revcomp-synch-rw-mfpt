@@ -13,6 +13,7 @@ import rawfine
 import common
 import distribution
 from common import cmp, py3_cmp, cmp_float
+common.SHOW_TIMERS = False
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -268,29 +269,32 @@ class Job:
         if not outp:
             raise Warning("check_outp: Job %s missing outp file" % self.name)
 
-        raw_dat = Datum.from_tuples(rawfine.read2csv(log, dat))
-        csv_dat = []
+        with common.timer('rawfine'):
+            raw_dat = Datum.from_tuples(rawfine.read2csv(log, dat, meta=False))
 
-        with open(outp, 'r') as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                if line.startswith(COMMENT_LINE):
-                    continue
+        with common.timer('refine'):
+            csv_dat = []
+            with open(outp, 'r') as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if line.startswith(COMMENT_LINE):
+                        continue
 
-                mean, err, its = line.split(',')
-                mean = float(mean)
-                err = float(err)
-                its = int(its)
-                fin = math.isfinite
-                if not (fin(mean) and fin(err)):
-                    continue
+                    mean, err, its = line.split(',')
+                    mean = float(mean)
+                    err = float(err)
+                    its = int(its)
+                    fin = math.isfinite
+                    if not (fin(mean) and fin(err)):
+                        continue
 
-                csv_dat.append(Datum(mean, err, its))
+                    csv_dat.append(Datum(mean, err, its))
 
         # lcs = common.LCS(csv_dat, raw_dat)
-        lcs = common.LCSGreedyApprox(raw_dat, csv_dat)
+        with common.timer('lcs'):
+            lcs = common.LCSGreedyApprox(raw_dat, csv_dat)
         lcs.invert()
         com_dat = lcs.common()
 
@@ -578,53 +582,62 @@ def generate_index(args):
     jobdir = args.jobdir
     jobs = {}
 
-    for root,_,files in os.walk(jobdir):
-        for file in files:
-            path = os.path.join(root, file)
-            rpath = pathlib.PurePath(path).relative_to(jobdir)
-            jobn = str(rpath.with_suffix(''))
+    with common.timer(1):
+        for root,_,files in os.walk(jobdir):
+            for file in files:
+                path = os.path.join(root, file)
+                rpath = pathlib.PurePath(path).relative_to(jobdir)
+                jobn = str(rpath.with_suffix(''))
 
-            if rpath.suffix in EXTS_rev:
-                jobs.setdefault(jobn, Job(jobdir, jobn))
-                jobs[jobn].add_data(rpath.suffix)
+                if rpath.suffix in EXTS_rev:
+                    jobs.setdefault(jobn, Job(jobdir, jobn))
+                    jobs[jobn].add_data(rpath.suffix)
 
     index = Index(args)
 
-    warnings = False
-    for jobn,job in jobs.items():
-        try:
-            job.get_overrides()
-            job.check_outp()
-            params = job.get_parameters()
-        except Warning as w:
-            print(w)
-            warnings = True
-            continue
-        index[params].add(job)
+    with common.timer(2):
+        warnings = False
+        for jobn,job in jobs.items():
+            print('.', end='', flush=True)
+            with common.timer((3,jobn)):
+                try:
+                    with common.timer((3,jobn,'overrides')):
+                        job.get_overrides()
+                    with common.timer((3,jobn,'outp')):
+                        job.check_outp()
+                    with common.timer((3,jobn,'params')):
+                        params = job.get_parameters()
+                except Warning as w:
+                    print(w)
+                    warnings = True
+                    continue
+                index[params].add(job)
+        print('')
 
-    if warnings:
-        print("\n*** Please fix the above warnings before continuing")
-        print("* For inconsistent outp/log, manually edit relevant files to resolve inconsistencies or use override*")
-        print("* For missing outp files, use rawfine.py cautiously to reconstruct")
-        print("* For missing log files, first touch the log file, then override* the relevant warnings.")
-        print("* For uninferred parameters, you may have an empty log file - add params to the log file...")
-        print("** .override files: see README.md")
-        return False
+        if warnings:
+            print("\n*** Please fix the above warnings before continuing")
+            print("* For inconsistent outp/log, manually edit relevant files to resolve inconsistencies or use override*")
+            print("* For missing outp files, use rawfine.py cautiously to reconstruct")
+            print("* For missing log files, first touch the log file, then override* the relevant warnings.")
+            print("* For uninferred parameters, you may have an empty log file - add params to the log file...")
+            print("** .override files: see README.md")
+            return False
 
-    warnings = False
-    for p,xs in index:
-        try:
-            xs.resolve()
-        except Warning as w:
-            print(w)
-            warnings = True
-            continue
+    with common.timer(4):
+        warnings = False
+        for p,xs in index:
+            try:
+                xs.resolve()
+            except Warning as w:
+                print(w)
+                warnings = True
+                continue
 
-    if warnings:
-        print("\n*** Please fix the above warnings before continuing")
-        print("* Staged plans need manual review before use;")
-        print("  if the plan looks right, remove the staged key")
-        return False
+        if warnings:
+            print("\n*** Please fix the above warnings before continuing")
+            print("* Staged plans need manual review before use;")
+            print("  if the plan looks right, remove the staged key")
+            return False
 
     return index
 
