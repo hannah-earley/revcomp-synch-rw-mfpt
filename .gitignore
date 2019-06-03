@@ -10,3 +10,4 @@ queue/*
 note/*
 __pycache__
 config.py
+*.slurm
