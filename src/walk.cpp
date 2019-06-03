@@ -549,6 +549,22 @@ std::ostream& operator<<(std::ostream& os, const QStep &step) {
               << (step.up    ? "u" : "d");
 }
 
+struct Params2D {
+    const unsigned int init;
+    const int term, term1;
+    std::uniform_int_distribution<int> init_dist;
+    double bias, p;
+    QuadWalkStepDistr32 step;
+    uint32_t pt;
+
+    Params2D(unsigned int init, int term, double bias) :
+        init(init), term(term), term1(term-1),
+        init_dist(0,-init),
+        bias(bias), p(0.5 * (1+bias)),
+        step(p), pt(step.pt)
+    {}
+};
+
 struct Coord2D {
     int x, y;
     Coord2D(int x, int y) : x(x), y(y) {}
@@ -574,11 +590,27 @@ struct Coord2D {
 
     }
 
-    inline void move_rng(uint32_t pt, pcg32& g) {
+    inline bool move_rng(uint32_t pt, pcg32& g, const int term1) {
         uint32_t r = g();
         bool right = pt >= r;
         bool down = (r & 1);
+        if (x >= term1 && right)
+            return true;
         move_ql(right, down);
+        return false;
+    }
+
+    inline void move_rng2(pcg32& g, size_t& r, Params2D& params) {
+        uint32_t v = g();
+        bool right = params.pt >= v;
+        if (x >= params.term1 && right) {
+            x = params.init;
+            y = params.init_dist(g);
+            r++;
+        } else {
+            bool down = (v & 1);
+            move_ql(right, down);
+        }
     }
 };
 std::ostream& operator<< (std::ostream &os, const Coord2D &coord) {
@@ -638,34 +670,13 @@ void mfpt2d_seed(double bias, int width, std::vector<Coord2D>& ensemble) {
     }
 }
 
-struct Params2D {
-    const unsigned int init;
-    const int term;
-    std::uniform_int_distribution<int> init_dist;
-    double bias, p;
-    QuadWalkStepDistr32 step;
-    uint32_t pt;
-
-    Params2D(unsigned int init, int term, double bias) :
-        init(init), term(term),
-        init_dist(0,-init),
-        bias(bias), p(0.5 * (1+bias)),
-        step(p), pt(step.pt)
-    {}
-};
-
 void mfpt2d(double bias, unsigned int init_, unsigned int width, WalkConfig wc) {
     Params2D params(1 - init_ - width, 1 - width, bias);
     std::vector<Coord2D> ensemble(wc.n, Coord2D(params.init,0));
     if (bias > 0) mfpt2d_seed(bias, width, ensemble);
 
     walk_loop(ensemble, wc, [](Coord2D& w, pcg32& rng, size_t& r, Params2D& params) {
-        w.move_rng(params.pt, rng);
-        if (w.x >= params.term) {
-            w.x = params.init;
-            w.y = params.init_dist(rng);
-            r++;
-        }
+        w.move_rng2(rng, r, params);
     }, params);
 }
 
