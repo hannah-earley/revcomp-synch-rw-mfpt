@@ -16,7 +16,6 @@ import multiprocessing
 import pathlib
 import email.message
 from functools import wraps
-import importlib.util
 import signal
 
 import config
@@ -80,9 +79,16 @@ def handler_enq1(qdir, jset, tmpl):
         jdir = os.path.join(qdir, jset)
         jtpl = os.path.join(jdir, tmpl)
 
-        spec = importlib.util.spec_from_file_location("template", jtpl)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
+        if sys.version_info >= (3,5):
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("template", jtpl)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+        elif sys.version_info >= (3,3):
+            from importlib.machinery import SourceFileLoader
+            mod = SourceFileLoader("template", jtpl).load_module()
+        else:
+            raise RuntimeError("Enqueueing requires python 3.3+!")
 
         jobbs = set()
 
