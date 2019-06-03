@@ -667,7 +667,6 @@ def handler_mfpt(args, index):
 @indexed_handler
 def handler_hist(args, index):
     for params, expt in index:
-        print(params)
         hist = expt.distribution()
         file = expt.path_for('.png')
 
@@ -694,6 +693,19 @@ def handler_hist(args, index):
             if params.simulation == '2d':
                 # plt.show()
                 pass
+
+            plt.close(fig)
+
+            if params.simulation == '2d':
+                file2 = expt.path_for('-col-avg.png')
+                widths = (np.array(row0s) + np.array(rowfs)) * 0.5
+                afreqs = np.array(freqs) / widths
+                fig, ax = plt.subplots()
+                ax.plot(row0s, afreqs)
+                fig.savefig(file2)
+                plt.close(fig)
+
+            print(file)
 
 
 @indexed_handler
