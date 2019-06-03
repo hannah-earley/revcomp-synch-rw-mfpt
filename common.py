@@ -514,7 +514,7 @@ def SkipIterator(it, skip=0):
             yield x
 
 def ProgressIterator(it, limit=float('inf'), every=None, file=sys.stderr):
-    log = lambda *a,**k: print(*a,**k,file=file,end='',flush=True)
+    log = lambda *a,**k: print(*a,file=file,end='',flush=True,**k)
     count = 0
 
     limit = abs(limit)
