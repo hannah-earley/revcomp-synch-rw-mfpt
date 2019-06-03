@@ -405,7 +405,7 @@ class Job:
         if 'cpu' in self.reqs:
             min_cpu = self.reqs['cpu']
             cur_cpu = cpus()
-            if cur_cpu < min_cpu:
+            if cur_cpu and cur_cpu < min_cpu:
                 print(self.path, ": Too few cpus!")
                 return False
         return True
