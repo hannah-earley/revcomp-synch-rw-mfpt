@@ -2,6 +2,7 @@
 import argparse
 import sys
 import common
+import math
 
 class Histogram:
     def __init__(self, binning=1):
@@ -66,6 +67,67 @@ class Histogram:
         for r0,rf,c in self:
             print("%d,%d,%d" % (r0,rf-1,c), file=file)
 
+
+class LateralDistribution:
+    ## record integers in closed interval [0,n]
+    def __init__(self, n):
+        self.n = n+1
+        self.counts = [0] * (n+1)
+        self.total = 0
+
+    def record_event(self, i, count=1):
+        self.counts[i] += count
+        self.total += count
+
+    def frequencies(self):
+        t = self.total
+        if t == 0:
+            n = self.n
+            rn = 1/n
+            return [rn] * n
+        return [c/t for c in self.counts]
+
+    ## non-uniformity measures
+
+    def nu_entropy(self):
+        def plnp(x):
+            if x < 0: x = 0
+            elif x > 1: x = 1
+
+            try:
+                return -x * math.log(x)
+            except ValueError:
+                return 0
+
+        h = sum(map(plnp, self.frequencies()))
+        hx = math.log(self.n)
+
+        return 1 - h/hx
+
+    def nu_variance(self):
+        # max variance is (n-1)/n^2
+        n = self.n
+        rn = 1/n
+        var = rn * sum((f-rn)**2 for f in self.frequencies())
+        varx = rn * (1 - rn)
+        return var/varx
+
+class LateralDistributions:
+    def __init__(self):
+        self.dists = {}
+
+    def record_event(self, r,c, count=1):
+        self.dists.setdefault(r, LateralDistribution(r)).record_event(c, count)
+
+    def dump(self):
+        dl = list(self.dists.items())
+        dl.sort(key=lambda x:x[0])
+        for row,dist in dl:
+            print(row,dist.nu_entropy(),dist.nu_variance(),dist.counts)
+
+
+
+
 class ExactHist:
     def raw(self, row):
         return 0
@@ -128,6 +190,7 @@ if __name__ == '__main__':
     parser.add_argument('-s', '--skip', default=0, type=int)
     parser.add_argument('-n', '--limit', default=float('inf'), type=int)
     parser.add_argument('-v', '--every', default=None, type=int)
+    parser.add_argument('-u', '--uniformity', action='store_true')
     parser.add_argument('file', nargs='?')
     args = parser.parse_args()
 
@@ -137,26 +200,42 @@ if __name__ == '__main__':
     every = args.every
     limit = args.limit
 
-    hist = Histogram(binn)
+    lines = common.SkipIterator(sys.stdin, skip)
+    progr = common.ProgressIterator(lines, limit, every)
+    fields = lambda line: [int(x.strip()) for x in line.split(',')]
+    entries = map(fields, progr)
 
-    if file:
-        try:
-            with open(file, 'r') as fh:
-                hist.load(fh)
-        except FileNotFoundError:
-            pass
+    if args.uniformity:
+        dist = LateralDistributions()
 
-    if limit:
-        try:
-            lines = common.SkipIterator(sys.stdin, skip)
-            for line in common.ProgressIterator(lines, limit, every):
-                pos, *_ = [int(x.strip()) for x in line.split(',')]
-                hist.record_event(-pos)
-        except KeyboardInterrupt:
-            pass
+        if limit:
+            try:
+                for row,col in entries:
+                    dist.record_event(-row, col)
+            except KeyboardInterrupt:
+                pass
 
-    if file:
-        with open(file, 'w') as fh:
-            hist.dump_csv(fh)
+        dist.dump()
+
     else:
-        hist.dump_csv()
+        hist = Histogram(binn)
+
+        if file:
+            try:
+                with open(file, 'r') as fh:
+                    hist.load(fh)
+            except FileNotFoundError:
+                pass
+
+        if limit:
+            try:
+                for row,*_ in entries:
+                    hist.record_event(-row)
+            except KeyboardInterrupt:
+                pass
+
+        if file:
+            with open(file, 'w') as fh:
+                hist.dump_csv(fh)
+        else:
+            hist.dump_csv()

@@ -5,6 +5,7 @@ dist=1
 widt=1
 suff=
 disp_path=0
+unif=0
 
 usage () {
     echo "Usage: $0 [OPTIONS]"
@@ -65,6 +66,18 @@ options () {
     done
 }
 
+options2 () {
+    while getopts ":u" o; do
+        case "${o}" in
+            u)
+                unif=1
+                ;;
+            \?|:)
+                ;;
+        esac
+    done
+}
+
 options "$@"
 while [ "$OPTIND" -le "$#" ]; do
     # keep processing arguments after unexpected options...
@@ -79,6 +92,12 @@ while [ "$OPTIND" -le "$#" ]; do
     argv+=("${!OPTIND}")
     OPTIND+=1
     options "$@"
+done
+
+options2 "$@"
+while [ "$OPTIND" -le "$#" ]; do
+    OPTIND+=1
+    options2 "$@"
 done
 
 dir="./jobs"
@@ -96,6 +115,7 @@ log="${dir}/${file}.log"
 csv="${dir}/${file}.csv"
 dat="${dir}/${file}.dat"
 hst="${dir}/${file}.dist"
+uni="${dir}/${file}.unif"
 
 mkdir -p "$dir"
 if [ "${disp_path}" -eq "1" ]; then
@@ -132,6 +152,12 @@ else
     # no need to catch signals differently here...
 
     argv+=(-r)
-    ./walk "${argv[@]}" | ./distribution.py "${argh[@]}" -- "${hst}"
+
+    dfile="${hst}"
+    if [ "${unif}" = "1" ]; then
+        dfile="${uni}"
+    fi
+
+    ./walk "${argv[@]}" | ./distribution.py "${argh[@]}" -- "${dfile}"
 
 fi
