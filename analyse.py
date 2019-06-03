@@ -104,7 +104,7 @@ class Parameters:
     @staticmethod
     def from_log(fin, dat=None):
         outp = None
-        for outp in rawfine.read_log(fin, dat):
+        for outp in rawfine.read_log(fin, dat, meta=False):
             pass
         if outp is None:
             return

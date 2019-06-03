@@ -19,26 +19,38 @@ sims = {"MFPT - 1D Walk": '1d'
        ,"Unit Tests": 'tu'
        ,"Test Bed...": 'tb'}
 
+DAT_CACHE = {}
+DAT_EOF = '# eof'
 def dat_count(dat, n_=None):
-    n = 0
-    eof = '# eof'
+    poss_corrupt = True
 
-    try:
-        with open(dat, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if line[0] == '#':
-                    if line == eof:
-                        return n
-                    continue
-                if line:
-                    n += 1
-    except FileNotFoundError:
+    if dat in DAT_CACHE:
+        n, poss_corrupt = DAT_CACHE[dat]
+
+    else:
+        n = 0
+        try:
+            with open(dat, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line[0] == '#':
+                        if line == DAT_EOF:
+                            poss_corrupt = False
+                            break
+                        continue
+                    if line:
+                        n += 1
+        except FileNotFoundError:
+            print('Data file not found: %s' % dat)
+            n = None
+        DAT_CACHE[dat] = n, poss_corrupt
+
+    if n is None:
         print('Data file not found: %s' % dat)
         return n_
-
-    if n != n_:
-        print("Possibly corrupt: %s (%d)" % (dat,n))
+    if n != n_ and poss_corrupt:
+        print("Possibly corrupt: %s (%d,%r)" % (dat,n,n_))
+        raise ValueError
     return n
 
 def parse_duration(s):
@@ -47,7 +59,7 @@ def parse_duration(s):
     units = toks[1::2]
     return sum(float(v) * unit_durs[u] for v,u in zip(vals, units))
 
-def read_log(fin, dat=None):
+def read_log(fin, dat=None, meta=True):
     outp = {
         'sim':None,
         'bias':None, 'dist':None, 'width':None,
@@ -67,9 +79,11 @@ def read_log(fin, dat=None):
             for line in hin:
                 line = line.strip()
 
-                fields = [x.strip() for x in line.split(':')]
-                if len(fields) == 2:
-                    key, val = fields
+                if line.count(':') == 1:
+                    key, val = line.split(':', 1)
+                    key = key.strip()
+                    val = val.strip()
+
                     if key == 'Running simulation':
                         outp['sim'] = sims[val]
                     if key == 'Bias':
@@ -120,27 +134,29 @@ def read_log(fin, dat=None):
                     outp['its'] = None
 
                 elif line.startswith('Real:'):
-                    matches = real_re.match(line)
-                    t0 = datetime.datetime.strptime(matches.group(1), real_fmt)
-                    t1 = datetime.datetime.strptime(matches.group(2), real_fmt)
-                    outp['dur'] = t1 - t0
-                    if outq is not None:
-                        outq['dur'] = outp['dur']
+                    if meta:
+                        matches = real_re.match(line)
+                        t0 = datetime.datetime.strptime(matches.group(1), real_fmt)
+                        t1 = datetime.datetime.strptime(matches.group(2), real_fmt)
+                        outp['dur'] = t1 - t0
+                        if outq is not None:
+                            outq['dur'] = outp['dur']
 
                 elif line.startswith('CPU:') or line.startswith('Wall:'):
-                    matches = syst_re.match(line)
-                    type_ = matches.group(1).lower()
-                    type__ = type_ + '_'
-                    loop_ = matches.group(2)
-                    tot_ = matches.group(3)
-                    loop = parse_duration(loop_)
-                    tot = parse_duration(tot_)
+                    if meta:
+                        matches = syst_re.match(line)
+                        type_ = matches.group(1).lower()
+                        type__ = type_ + '_'
+                        loop_ = matches.group(2)
+                        tot_ = matches.group(3)
+                        loop = parse_duration(loop_)
+                        tot = parse_duration(tot_)
 
-                    outp[type_] = (loop, tot)
-                    outp[type__] = (loop_, tot_)
-                    if outq is not None:
-                        outq[type_] = outp[type_]
-                        outq[type__] = outp[type__]
+                        outp[type_] = (loop, tot)
+                        outp[type__] = (loop_, tot_)
+                        if outq is not None:
+                            outq[type_] = outp[type_]
+                            outq[type__] = outp[type__]
 
                 elif line.startswith('0%..'):
                     progs = line.split('..')
