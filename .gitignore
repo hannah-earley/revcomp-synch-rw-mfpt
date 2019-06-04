@@ -11,3 +11,4 @@ note/*
 __pycache__
 config.py
 *.slurm
+slurm-*.out
