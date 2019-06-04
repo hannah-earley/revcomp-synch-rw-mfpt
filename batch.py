@@ -226,7 +226,7 @@ def handler_stat(args):
             msg['From'] = config.email.sender
             msg['To'] = eml
             msg.set_content(stats)
-            p = subprocess.Popen(["/usr/sbin/sendmail", "-t", "-oi"], stdin=subprocess.PIPE)
+            p = subprocess.Popen(config.email.argv, stdin=subprocess.PIPE)
             p.communicate(msg.as_string().encode())
 
         if not int_:
