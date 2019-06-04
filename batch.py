@@ -366,7 +366,7 @@ class Job:
             with open(path, 'r') as f:
                 mean, err = refine.refine(f, self.skip)
                 return mean, err
-        except (FileNotFoundError, ZeroDivisionError):
+        except (FileNotFoundError, ZeroDivisionError, ValueError):
             return float('nan'), float('inf')
 
     @needload
