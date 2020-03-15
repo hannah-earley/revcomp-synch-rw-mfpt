@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 fs = ['test4d.log','test4c.log','test4b.log']
 fs = ['test3d.log','test3c.log','test3b.log']
-# fs = ['test4e.log']
+fs = ['test3f.log']
 r0 = 0
 lim = 100
 lim_ = 120
@@ -45,6 +45,16 @@ for f in fs:
 
 data = list(data.items())
 data.sort()
+
+# s = 0
+# for i,row in data:
+#     s += sum(row)
+# print('sum',s)
+# for i,row in data:
+#     for j in range(len(row)):
+#         row[j] /= s
+# print(data[:5])
+# 1/0
 
 
 
@@ -249,9 +259,9 @@ if do_fit:
         # p0 = (const, diff, lim)
         # ys0 = ansatz(xs, *p0)
 
-        ansatz = ansatz6(r)
-        p0 = (const, diff, 2)
-        ys0 = ansatz(xs, *p0)
+        # ansatz = ansatz6(r)
+        # p0 = (const, diff, 2)
+        # ys0 = ansatz(xs, *p0)
 
         for g0 in [2,0.5]:
 

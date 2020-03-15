@@ -746,6 +746,11 @@ def handler_hist(args, index):
 
 @indexed_handler
 def handler_dist(args, index):
+    """
+for width in 1 10 100 1000; for dist in 1 3 10 31 100 316 1000 3162 10000 31622 100000 316227 1000000; ./job.sh -b 0.01 -w $width -d $dist -S width-0.01 -- -n 10000000 -v 100000; end; end
+
+for width in 1 10 100 1000; for dist in 1 3 10 31 100 316 1000 3162 10000 31622 100000 316227 1000000; ./job.sh -b 0.1 -w $width -d $dist -S width-test -- -n 10000000 -v 100000; end; end
+    """
     pass
 
 
