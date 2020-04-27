@@ -438,25 +438,18 @@ void walk_loop(std::vector<S>& ensemble,
     }
 }
 
+// convert real in [0,1] to int in [0,max]
+uint32_t prob2int(double p) {
+    const uint64_t u32max = 4294967295;
+    uint32_t pt = 4294967295 * p;
+    uint64_t pt_ = p * u32max;
+    if (pt_ > u32max) pt = u32max;
+    else if (pt_ < 0) pt = 0;
+    else pt = pt_;
+    return pt;
+}
+
 //// 1d walk
-
-struct LinWalkStepDistr32 {
-    uint32_t pt;
-
-    LinWalkStepDistr32(double p) {
-        const uint64_t u32max = 4294967295;
-        pt = 4294967295 * p;
-        uint64_t pt_ = p * u32max;
-        if (pt_ > u32max) pt = u32max;
-        else if (pt_ < 0) pt = 0;
-        else pt = pt_;
-    }
-
-    inline bool operator() (pcg32& g) const {
-        uint32_t r = g();
-        return (pt >= r);
-    }
-};
 
 template<typename S>
 void mfpt1d_seed(double bias, std::vector<S>& ensemble) {
@@ -490,13 +483,12 @@ template <typename S>
 struct Params1D {
     S init, term;
     double bias, p;
-    LinWalkStepDistr32 step;
     uint32_t pt;
 
     Params1D(S init, double bias) :
         init(init), term(0),
         bias(bias), p(0.5 * (1+bias)),
-        step(p), pt(step.pt)
+        pt(prob2int(p))
     {}
 };
 
@@ -517,37 +509,6 @@ void mfpt1d(double bias, S init, WalkConfig wc) {
 }
 
 //// 2d walk helpers
-
-struct QuadWalkStepDistr32 {
-    struct Step {
-        bool right : 1;
-        bool up : 1;
-
-        Step(bool right, bool up) : right(right), up(up) {};
-        friend std::ostream& operator<< (std::ostream &os, const Step &step);
-    };
-
-    uint32_t pt;
-
-    QuadWalkStepDistr32(double p) {
-        const uint64_t u32max = 4294967295;
-        pt = 4294967295 * p;
-        uint64_t pt_ = p * u32max;
-        if (pt_ > u32max) pt = u32max;
-        else if (pt_ < 0) pt = 0;
-        else pt = pt_;
-    }
-
-    inline Step operator() (pcg32& g) const {
-        uint32_t r = g();
-        return Step(pt >= r, (r & 1) == 1);
-    }
-};
-typedef QuadWalkStepDistr32::Step QStep;
-std::ostream& operator<<(std::ostream& os, const QStep &step) {
-    return os << (step.right ? "r" : "l")
-              << (step.up    ? "u" : "d");
-}
 
 struct Coord2D {
     int x, y;
@@ -604,6 +565,13 @@ void PersistentVector<Coord2D>::printn(FILE* file, const std::vector<Coord2D>& c
         fprintf(file, "%d,%d\n", coord.x, coord.y);
 }
 
+struct QStep {
+    bool right:1, up:1;
+    QStep(bool right, bool up) : right(right), up(up) {};
+    friend std::ostream& operator<< (std::ostream &os, const QStep &step) {
+        return os << (step.right ? "r" : "l") << (step.up ? "u" : "d");
+    }
+};
 void quad_step_test() {
     QStep ld(false,false), lu(false,true), rd(true,false), ru(true,true);
     std::vector<QStep> dirs = {lu, ld, ru, rd};
@@ -639,18 +607,17 @@ void mfpt2d_seed(double bias, int width, std::vector<Coord2D>& ensemble) {
 }
 
 struct Params2D {
-    const unsigned int init;
+    const int init;
     const int term;
     std::uniform_int_distribution<int> init_dist;
     double bias, p;
-    QuadWalkStepDistr32 step;
     uint32_t pt;
 
-    Params2D(unsigned int init, int term, double bias) :
+    Params2D(int init, int term, double bias) :
         init(init), term(term),
         init_dist(0,-init),
         bias(bias), p(0.5 * (1+bias)),
-        step(p), pt(step.pt)
+        pt(prob2int(p))
     {}
 };
 
@@ -669,13 +636,90 @@ void mfpt2d(double bias, unsigned int init_, unsigned int width, WalkConfig wc) 
     }, params);
 }
 
+//// 2d gessel walk
+
+struct Coord2DGessel {
+    int x, y;
+    Coord2DGessel(int x, int y) : x(x), y(y) {}
+    friend std::ostream& operator<< (std::ostream &os, const Coord2DGessel &coord);
+
+    inline void move_ql(bool up, bool right) {
+        right = x == 0 ? 1 : right;
+        y -= up - right;
+        x += 2 * right - 1;
+    }
+
+    inline void move_rng(uint32_t pt, pcg32& g) {
+        uint32_t r = g();
+        bool up = pt >= r;
+        bool right = (r & 1);
+        move_ql(up, right);
+    }
+};
+std::ostream& operator<< (std::ostream &os, const Coord2DGessel &coord) {
+    return os << "(" << coord.x << ", " << coord.y << ")";
+}
+template<>
+Coord2DGessel PersistentVector<Coord2DGessel>::read1(std::string s) {
+    auto n = s.find(',');
+    if (n == std::string::npos)
+        throw std::invalid_argument("Corrupt persistent state... (invalid Coord2DGessel)");
+
+    int x = std::stoi(s.substr(0,n));
+    int y = std::stoi(s.substr(n+1));
+    return Coord2DGessel(x, y);
+}
+template<>
+std::ostream& PersistentVector<Coord2DGessel>::write1(std::ostream& os, const Coord2DGessel& coord) {
+    return os << coord.x << "," << coord.y << std::endl;
+}
+template<>
+void PersistentVector<Coord2DGessel>::printn(FILE* file, const std::vector<Coord2DGessel>& coords) {
+    for (const Coord2DGessel &coord : coords)
+        fprintf(file, "%d,%d\n", coord.x, coord.y);
+}
+
+void mfpt2d_gessel_seed(double bias, int init, int col, std::vector<Coord2DGessel>& ensemble) {
+    for (Coord2DGessel& w : ensemble) {
+        w = Coord2DGessel(col, init);
+    }
+}
+
+struct Params2DGessel {
+    const unsigned int init, col;
+    double bias, p;
+    uint32_t pt;
+
+    Params2DGessel(unsigned int init, unsigned int col, double bias) :
+        init(init), col(col),
+        bias(bias), p(0.5 * (1+bias)),
+        pt(prob2int(p))
+    {}
+};
+
+void mfpt2d_gessel(double bias, unsigned int init, unsigned int col, WalkConfig wc) {
+    Params2DGessel params(init, col, bias);
+    std::vector<Coord2DGessel> ensemble(wc.n, Coord2DGessel(col, init));
+    // if (bias > 0) mfpt2d_gessel_seed(bias, init, col, ensemble);
+
+    walk_loop(ensemble, wc, [](Coord2DGessel& w, pcg32& rng, size_t& r, Params2DGessel& params) {
+        w.move_rng(params.pt, rng);
+        if (w.y <= 0) {
+            w.y = params.init;
+            w.x = params.col;
+            r++;
+        }
+    }, params);
+}
+
 //// cli interface
 
-enum Simulation { WALK_1D, WALK_2D, UNITEST, TESTBED };
+enum Simulation { WALK_1D, WALK_2D, WALK_2G, UNITEST, TESTBED };
 std::ostream& operator<< (std::ostream &os, const Simulation &sim) {
     switch (sim) {
         case WALK_1D: return os << "MFPT - 1D Walk";
         case WALK_2D: return os << "MFPT - 2D Walk (Constrained/Quadrant)";
+        case WALK_2G: return os << "MFPT - 2D Walk (Gessel)";
         case UNITEST: return os << "Unit Tests";
         case TESTBED: return os << "Test Bed...";
     }
@@ -690,12 +734,14 @@ void help(int argc, char *argv[]) {
     fprintf(stderr, "Usage: %s [options]\n", progn);
     fprintf(stderr, "    -1           Compute 1D walk MFPT\n");
     fprintf(stderr, "    -2           Compute 2D walk MFPT\n");
+    fprintf(stderr, "    -g           Compute 2D gessel walk MFPT\n");
     fprintf(stderr, "    -t           Perform unit tests\n");
     fprintf(stderr, "    -h           Print this help message\n");
     fprintf(stderr, "    -v           Verbose/debug mode\n");
     fprintf(stderr, "    -b bias      Biased walk, bias \\in [-1,1]\n");
     fprintf(stderr, "    -d distance  Starting point, [nat]\n");
     fprintf(stderr, "    -w width     Constriction width (2D only), [nat]\n");
+    fprintf(stderr, "                   (initial column for gessel walks)\n");
     fprintf(stderr, "    -n count     Number of walkers in ensemble, [nat]\n");
     fprintf(stderr, "    -p filename  Persistence file\n");
     fprintf(stderr, "    -q filename  Clean output file\n");
@@ -743,6 +789,7 @@ int main(int argc, char *argv[]) {
     std::cout.precision(12);
     std::cerr.precision(12);
 
+    bool width_set = false;
     double bias = 0;
     unsigned int width = 1;
     unsigned int dist = 1;
@@ -759,12 +806,17 @@ int main(int argc, char *argv[]) {
     };
 
     int c;
-    while ((c = getopt(argc, argv, "129tvh?b:w:n:d:p:q:m:s:x:i:r")) != -1) switch(c) {
+    while ((c = getopt(argc, argv, "12g9tvh?b:w:n:d:p:q:m:s:x:i:r")) != -1) switch(c) {
         case '1':
             sim = WALK_1D;
             break;
         case '2':
             sim = WALK_2D;
+            break;
+        case 'g':
+            sim = WALK_2G;
+            if (!width_set)
+                width = 0;
             break;
         case 't':
             sim = UNITEST;
@@ -786,6 +838,7 @@ int main(int argc, char *argv[]) {
             break;
         case 'w':
             width = stou(optarg);
+            width_set = true;
             break;
         case 'n':
             wc.n = std::stoul(optarg);
@@ -833,6 +886,8 @@ int main(int argc, char *argv[]) {
         std::cerr << "  Distance:           " << dist << std::endl;
     if (sim == WALK_2D) {
         std::cerr << "  Constriction Width: " << width << std::endl; }
+    if (sim == WALK_2G) {
+        std::cerr << "  Initial Column:     " << width << std::endl; }
         std::cerr << "  Walker Count:       " << wc.n << std::endl;
         std::cerr << "  Measurement Count:  " << wc.ensemble_count << std::endl;
         std::cerr << "  Sample Window:      " << wc.sample_window << std::endl;
@@ -853,6 +908,10 @@ int main(int argc, char *argv[]) {
 
         case WALK_2D:
             mfpt2d(bias, dist, width, wc);
+            break;
+
+        case WALK_2G:
+            mfpt2d_gessel(bias, dist, width, wc);
             break;
 
         case UNITEST:

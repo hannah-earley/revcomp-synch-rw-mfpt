@@ -125,6 +125,21 @@ class LateralDistributions:
         for row,dist in dl:
             print(row,dist.nu_entropy(),dist.nu_variance(),dist.counts)
 
+class Gessel:
+    def __init__(self):
+        self.counts = {}
+        self.total = 0
+        self.sum = 0
+
+    def record_event(self, n, count=1):
+        self.counts.setdefault(n, 0);
+        self.counts[n] += count;
+        self.total += count;
+        self.sum += n * count;
+
+    def dump(self):
+        print(self.sum / self.total)
+
 
 
 
@@ -191,6 +206,7 @@ if __name__ == '__main__':
     parser.add_argument('-n', '--limit', default=float('inf'), type=int)
     parser.add_argument('-v', '--every', default=None, type=int)
     parser.add_argument('-u', '--uniformity', action='store_true')
+    parser.add_argument('-g', '--gessel', action='store_true')
     parser.add_argument('file', nargs='?')
     args = parser.parse_args()
 
@@ -216,6 +232,19 @@ if __name__ == '__main__':
                 pass
 
         dist.dump()
+
+    elif args.gessel:
+        gessel = Gessel()
+
+        if limit:
+            try:
+                for row,col,*_ in entries:
+                    if col == 1 and row > 0:
+                        gessel.record_event(row - 1)
+            except KeyboardInterrupt:
+                pass
+
+        gessel.dump()
 
     else:
         hist = Histogram(binn)
