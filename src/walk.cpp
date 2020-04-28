@@ -20,7 +20,7 @@ bool VERBOSE_MODE = false;
 #define VERBOSE if (VERBOSE_MODE)
 
 bool DYING = false;
-size_t DEATH_CHECK = 100000000;
+#define DEATH_POLL if ((its_loc & (~(~0ULL << 24))) == 0)
 
 //// walk config
 
@@ -220,7 +220,7 @@ pcg32 &omp_thread_rng(std::vector<pcg32>& rngs) {
 
 template <typename S, typename E, typename F>
 Stats ensemble_walk(std::vector<S>& walkers,
-                    WalkConfig wc,
+                    const WalkConfig wc,
                     std::vector<pcg32>& rngs,
                     size_t& its,
                     F step_fn,
@@ -242,10 +242,9 @@ Stats ensemble_walk(std::vector<S>& walkers,
         pcg32& rng = omp_thread_rng(rngs);
         std::vector<size_t> rs_loc(wc.ensemble_count, 0);
         std::vector<size_t> ns_loc(wc.ensemble_count, 0);
-        size_t its_loc = 0,
-               ensemble_count = wc.ensemble_count,
-               sample_window = wc.sample_window,
-               death_check = DEATH_CHECK;
+        size_t its_loc = 0;
+        const size_t ensemble_count = wc.ensemble_count,
+                     sample_window = wc.sample_window;
 
         size_t num_threads = omp_get_num_threads();
         size_t threads_done_loc;
@@ -276,13 +275,14 @@ Stats ensemble_walk(std::vector<S>& walkers,
             S walker = walkers[i];
             for (size_t j = 0; j < ensemble_count; j++) {
                 size_t r = 0;
-                for (size_t t = 0; t < sample_window; t++, its_loc++)
+                for (size_t t = 0; t < sample_window; t++)
                     step_fn(walker, rng, r, step_env);
                 rs_loc[j] += r;
                 ns_loc[j]++;
+                its_loc += sample_window;
 
                 // death
-                if (its_loc % death_check == 0) {
+                DEATH_POLL {
                     if (thread == 0) POLLSIGS;
                     if (DYING) break;
                 }
@@ -341,7 +341,7 @@ Stats ensemble_walk(std::vector<S>& walkers,
 
 template <typename S, typename E, typename F>
 void streaming_walk(std::vector<S>& walkers,
-                    WalkConfig wc,
+                    const WalkConfig wc,
                     std::vector<pcg32>& rngs,
                     F step_fn,
                     E step_env)
@@ -354,10 +354,9 @@ void streaming_walk(std::vector<S>& walkers,
     #pragma omp parallel
     {
         pcg32& rng = omp_thread_rng(rngs);
-        size_t its_loc = 0,
-               ensemble_count = wc.ensemble_count,
-               sample_window = wc.sample_window,
-               death_check = DEATH_CHECK;
+        size_t its_loc = 0;
+        const size_t ensemble_count = wc.ensemble_count,
+                     sample_window = wc.sample_window;
 
         size_t num_threads = omp_get_num_threads();
         size_t threads_done_loc;
@@ -374,12 +373,13 @@ void streaming_walk(std::vector<S>& walkers,
 
             for (size_t j = 0; j < ensemble_count; j++) {
                 size_t r = 0;
-                for (size_t t = 0; t < sample_window; t++, its_loc++)
+                for (size_t t = 0; t < sample_window; t++)
                     step_fn(walker, rng, r, step_env);
                 history.push_back(walker);
+                its_loc += sample_window;
 
                 // death
-                if (its_loc % death_check == 0) {
+                DEATH_POLL {
                     if (thread == 0) POLLSIGS;
                     if (DYING) break;
                 }
