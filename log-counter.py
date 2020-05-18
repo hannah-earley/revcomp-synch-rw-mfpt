@@ -49,6 +49,15 @@ class Columns:
         self._padstr = padstr
         self._counts = []
 
+    def copy(self):
+        other = Columns(*self._alignments, separator=self._separator, padstr=self._padstr)
+        other._data = self._data[:]
+        other._counts = self._counts[:]
+        for row in other._data:
+            if isinstance(row, Columns.HLine):
+                row._counts = other._counts
+        return other
+
     def __call__(self, *fields):
         while len(fields) > len(self._counts):
             self._counts.append(0)
@@ -87,12 +96,17 @@ if __name__ == '__main__':
     cols('iteration count', 'file')
     tot = 0
     for pwd, _, fns in os.walk(dir_):
+        cols_ = cols.copy()
+        subtot = 0
+        empty = True
+
         cols.hline()
         cols('', pwd + '/')
         cols.hline('-')
 
         for fn in sorted(fns):
             if fn.endswith('.log') and ext == 'log':
+                empty = False
                 with open(os.path.join(pwd, fn), 'r') as f:
                     cur = 0
                     for line in f:
@@ -103,8 +117,9 @@ if __name__ == '__main__':
                         except:
                             pass
                     cols(nice_int(cur) if cur > 0 else '-', fn)
-                    tot += cur
+                    subtot += cur
             if fn.endswith('.csv') and ext == 'csv':
+                empty = False
                 with open(os.path.join(pwd, fn), 'r') as f:
                     cur = 0
                     for line in f:
@@ -114,7 +129,15 @@ if __name__ == '__main__':
                         except:
                             pass
                     cols(nice_int(cur) if cur > 0 else '-', fn)
-                    tot += cur
+                    subtot += cur
+
+        cols.hline('-')
+        cols(nice_int(subtot), 'SUBTOTAL')
+
+        if empty:
+            cols = cols_
+        else:
+            tot += subtot
 
     cols.hline()
     cols(nice_int(tot), 'TOTAL')
