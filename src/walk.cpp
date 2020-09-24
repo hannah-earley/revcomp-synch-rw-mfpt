@@ -706,6 +706,21 @@ void mfpt2d_cusp_single(double bias, unsigned int init_, unsigned int width, uns
     }, params);
 }
 
+void mfpt2d_refl(double bias, unsigned int init_, unsigned int width, WalkConfig wc) {
+    Params2D params(2 - init_ - width, 1 - width, bias);
+    std::vector<Coord2D> ensemble(wc.n, Coord2D(params.init,0));
+    if (bias > 0) mfpt2d_seed(bias, width, ensemble);
+
+    walk_loop(ensemble, wc, [](Coord2D& w, pcg32& rng, size_t& r, Params2D& params) {
+        w.move_rng(params.pt, rng);
+        if (w.x >= params.term) {
+            w.x = params.init - 1;
+            w.y = params.init_dist(rng) + (rng() % 2);
+            r++;
+        }
+    }, params);
+}
+
 //// 2d gessel walk
 
 struct Coord2DGessel {
@@ -785,6 +800,8 @@ void mfpt2d_gessel(double bias, unsigned int init, unsigned int col, WalkConfig 
 //// cli interface
 
 enum Simulation { WALK_1D, WALK_2D, WALK_2G, UNITEST, TESTBED };
+enum DistrShape { DIST_FLAT, DIST_CUSP, DIST_REFL };
+
 std::ostream& operator<< (std::ostream &os, const Simulation &sim) {
     switch (sim) {
         case WALK_1D: return os << "MFPT - 1D Walk";
@@ -792,6 +809,15 @@ std::ostream& operator<< (std::ostream &os, const Simulation &sim) {
         case WALK_2G: return os << "MFPT - 2D Walk (Gessel)";
         case UNITEST: return os << "Unit Tests";
         case TESTBED: return os << "Test Bed...";
+    }
+    return os << "???";
+}
+
+std::ostream& operator<< (std::ostream &os, const DistrShape &shape) {
+    switch (shape) {
+        case DIST_FLAT: return os << "Flat";
+        case DIST_CUSP: return os << "Cusp";
+        case DIST_REFL: return os << "Reflective";
     }
     return os << "???";
 }
@@ -811,7 +837,8 @@ void help(int argc, char *argv[]) {
     fprintf(stderr, "    -b bias      Biased walk, bias \\in [-1,1]\n");
     fprintf(stderr, "    -d distance  Starting point, [nat]\n");
     fprintf(stderr, "    -c column    Single point distribution with given column, [nat]\n");
-    fprintf(stderr, "    -C           Use a cusp-shape distribution instead\n");
+    fprintf(stderr, "    -C           Use a cusp-shape distribution\n");
+    fprintf(stderr, "    -R           Use a 'reflective' (1/2,1,1,...,1,1,1/2) distribution\n");
     fprintf(stderr, "    -w width     Constriction width (2D only), [nat]\n");
     fprintf(stderr, "    -n count     Number of walkers in ensemble, [nat]\n");
     fprintf(stderr, "    -p filename  Persistence file\n");
@@ -860,7 +887,7 @@ int main(int argc, char *argv[]) {
     std::cout.precision(12);
     std::cerr.precision(12);
 
-    bool cusp = false;
+    DistrShape shape = DIST_FLAT;
     double bias = 0;
     unsigned int width = 1;
     unsigned int dist = 1;
@@ -878,7 +905,7 @@ int main(int argc, char *argv[]) {
     };
 
     int c;
-    while ((c = getopt(argc, argv, "12g9tvh?b:w:n:d:c:Cp:q:m:s:x:i:r")) != -1) switch(c) {
+    while ((c = getopt(argc, argv, "12g9tvh?b:w:n:d:c:CRp:q:m:s:x:i:r")) != -1) switch(c) {
         case '1':
             sim = WALK_1D;
             break;
@@ -923,7 +950,10 @@ int main(int argc, char *argv[]) {
             column = stou(optarg);
             break;
         case 'C':
-            cusp = true;
+            shape = DIST_CUSP;
+            break;
+        case 'R':
+            shape = DIST_REFL;
             break;
         case 'p':
             wc.pv_filename = optarg;
@@ -960,11 +990,10 @@ int main(int argc, char *argv[]) {
         std::cerr << "  Bias:               " << bias << std::endl;
         std::cerr << "  Distance:           " << dist << std::endl;
     if (sim == WALK_2D) {
-        std::cerr << "  Constriction Width: " << width << std::endl; }
+        std::cerr << "  Constriction Width: " << width << std::endl;
+        std::cerr << "  Distribution Shape: " << shape << std::endl; }
     if (column >= 0) {
         std::cerr << "  Initial Column:     " << column << std::endl; }
-    if (cusp) {
-        std::cerr << "  Using cusp-shape distribution" << std::endl; }
         std::cerr << "  Walker Count:       " << wc.n << std::endl;
         std::cerr << "  Measurement Count:  " << wc.ensemble_count << std::endl;
         std::cerr << "  Sample Window:      " << wc.sample_window << std::endl;
@@ -984,12 +1013,18 @@ int main(int argc, char *argv[]) {
             break;
 
         case WALK_2D:
-            if (!cusp) {
-                if (column < 0)      mfpt2d(bias, dist, width, wc);
-                else          mfpt2d_single(bias, dist, width, column, wc);
-            } else {
-                if (column < 0) mfpt2d_cusp(bias, dist, width, wc);
-                else     mfpt2d_cusp_single(bias, dist, width, column, wc);
+            switch (shape) {
+                case DIST_FLAT:
+                    if (column < 0)      mfpt2d(bias, dist, width, wc);
+                    else          mfpt2d_single(bias, dist, width, column, wc);
+                    break;
+                case DIST_CUSP:
+                    if (column < 0) mfpt2d_cusp(bias, dist, width, wc);
+                    else     mfpt2d_cusp_single(bias, dist, width, column, wc);
+                    break;
+                case DIST_REFL:
+                    mfpt2d_refl(bias, dist, width, wc);
+                    break;
             }
             break;
 
