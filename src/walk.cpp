@@ -609,13 +609,21 @@ void mfpt2d_seed(double bias, int width, std::vector<Coord2D>& ensemble) {
 struct Params2D {
     const int init;
     const int term;
+    const unsigned int col;
     std::uniform_int_distribution<int> init_dist;
     double bias, p;
     uint32_t pt;
 
-    Params2D(int init, int term, double bias) :
-        init(init), term(term),
+    Params2D(int init, int term, double bias, unsigned int col = 0) :
+        init(init), term(term), col(col),
         init_dist(0,-init),
+        bias(bias), p(0.5 * (1+bias)),
+        pt(prob2int(p))
+    {}
+
+    Params2D(int init, int term, double bias, bool cusp, unsigned int col = 0) :
+        init(init), term(term), col(col),
+        init_dist(0,-2*init),
         bias(bias), p(0.5 * (1+bias)),
         pt(prob2int(p))
     {}
@@ -631,6 +639,68 @@ void mfpt2d(double bias, unsigned int init_, unsigned int width, WalkConfig wc) 
         if (w.x >= params.term) {
             w.x = params.init;
             w.y = params.init_dist(rng);
+            r++;
+        }
+    }, params);
+}
+
+void mfpt2d_cusp(double bias, unsigned int init_, unsigned int width, WalkConfig wc) {
+    Params2D params(1 - init_ - width, 1 - width, bias, true);
+    std::vector<Coord2D> ensemble(wc.n, Coord2D(params.init,0));
+    if (bias > 0) mfpt2d_seed(bias, width, ensemble);
+
+    walk_loop(ensemble, wc, [](Coord2D& w, pcg32& rng, size_t& r, Params2D& params) {
+        w.move_rng(params.pt, rng);
+        if (w.x >= params.term) {
+            w.x = params.init;
+            w.y = params.init_dist(rng);
+            if (w.y < -w.x) {
+                w.x -= w.y;
+            } else {
+                w.y += w.x;
+                w.x -= w.y;
+                w.y = -w.x-w.y;
+            }
+            r++;
+        }
+    }, params);
+}
+
+void mfpt2d_single(double bias, unsigned int init_, unsigned int width, unsigned int col, WalkConfig wc) {
+    Params2D params(1 - init_ - width, 1 - width, bias, col);
+    std::vector<Coord2D> ensemble(wc.n, Coord2D(params.init,0));
+    if (bias > 0) mfpt2d_seed(bias, width, ensemble);
+
+    walk_loop(ensemble, wc, [](Coord2D& w, pcg32& rng, size_t& r, Params2D& params) {
+        w.move_rng(params.pt, rng);
+        if (w.x >= params.term) {
+            w.x = params.init;
+            w.y = params.col;
+            r++;
+        }
+    }, params);
+}
+
+void mfpt2d_cusp_single(double bias, unsigned int init_, unsigned int width, unsigned int col, WalkConfig wc) {
+    Coord2D w(1 - init_ - width, col);
+    if (w.y < -w.x) {
+        w.x -= w.y;
+    } else {
+        w.y += w.x;
+        w.y = -w.x-w.y;
+        w.x -= w.y;
+        w.y = -w.x-w.y;
+    }
+
+    Params2D params(w.x, 1 - width, bias, true, w.y);
+    std::vector<Coord2D> ensemble(wc.n, Coord2D(params.init,0));
+    if (bias > 0) mfpt2d_seed(bias, width, ensemble);
+
+    walk_loop(ensemble, wc, [](Coord2D& w, pcg32& rng, size_t& r, Params2D& params) {
+        w.move_rng(params.pt, rng);
+        if (w.x >= params.term) {
+            w.x = params.init;
+            w.y = params.col;
             r++;
         }
     }, params);
@@ -740,8 +810,9 @@ void help(int argc, char *argv[]) {
     fprintf(stderr, "    -v           Verbose/debug mode\n");
     fprintf(stderr, "    -b bias      Biased walk, bias \\in [-1,1]\n");
     fprintf(stderr, "    -d distance  Starting point, [nat]\n");
+    fprintf(stderr, "    -c column    Single point distribution with given column, [nat]\n");
+    fprintf(stderr, "    -C           Use a cusp-shape distribution instead\n");
     fprintf(stderr, "    -w width     Constriction width (2D only), [nat]\n");
-    fprintf(stderr, "                   (initial column for gessel walks)\n");
     fprintf(stderr, "    -n count     Number of walkers in ensemble, [nat]\n");
     fprintf(stderr, "    -p filename  Persistence file\n");
     fprintf(stderr, "    -q filename  Clean output file\n");
@@ -789,10 +860,11 @@ int main(int argc, char *argv[]) {
     std::cout.precision(12);
     std::cerr.precision(12);
 
-    bool width_set = false;
+    bool cusp = false;
     double bias = 0;
     unsigned int width = 1;
     unsigned int dist = 1;
+    int column = -1;
     Simulation sim = UNITEST;
     WalkConfig wc = {
         .n = 1000,
@@ -806,7 +878,7 @@ int main(int argc, char *argv[]) {
     };
 
     int c;
-    while ((c = getopt(argc, argv, "12g9tvh?b:w:n:d:p:q:m:s:x:i:r")) != -1) switch(c) {
+    while ((c = getopt(argc, argv, "12g9tvh?b:w:n:d:c:Cp:q:m:s:x:i:r")) != -1) switch(c) {
         case '1':
             sim = WALK_1D;
             break;
@@ -815,8 +887,6 @@ int main(int argc, char *argv[]) {
             break;
         case 'g':
             sim = WALK_2G;
-            if (!width_set)
-                width = 0;
             break;
         case 't':
             sim = UNITEST;
@@ -838,7 +908,6 @@ int main(int argc, char *argv[]) {
             break;
         case 'w':
             width = stou(optarg);
-            width_set = true;
             break;
         case 'n':
             wc.n = std::stoul(optarg);
@@ -849,6 +918,12 @@ int main(int argc, char *argv[]) {
                 std::cerr << "Distance outside range..\n\n";
                 goto help;
             }
+            break;
+        case 'c':
+            column = stou(optarg);
+            break;
+        case 'C':
+            cusp = true;
             break;
         case 'p':
             wc.pv_filename = optarg;
@@ -886,8 +961,10 @@ int main(int argc, char *argv[]) {
         std::cerr << "  Distance:           " << dist << std::endl;
     if (sim == WALK_2D) {
         std::cerr << "  Constriction Width: " << width << std::endl; }
-    if (sim == WALK_2G) {
-        std::cerr << "  Initial Column:     " << width << std::endl; }
+    if (column >= 0) {
+        std::cerr << "  Initial Column:     " << column << std::endl; }
+    if (cusp) {
+        std::cerr << "  Using cusp-shape distribution" << std::endl; }
         std::cerr << "  Walker Count:       " << wc.n << std::endl;
         std::cerr << "  Measurement Count:  " << wc.ensemble_count << std::endl;
         std::cerr << "  Sample Window:      " << wc.sample_window << std::endl;
@@ -907,11 +984,17 @@ int main(int argc, char *argv[]) {
             break;
 
         case WALK_2D:
-            mfpt2d(bias, dist, width, wc);
+            if (!cusp) {
+                if (column < 0)      mfpt2d(bias, dist, width, wc);
+                else          mfpt2d_single(bias, dist, width, column, wc);
+            } else {
+                if (column < 0) mfpt2d_cusp(bias, dist, width, wc);
+                else     mfpt2d_cusp_single(bias, dist, width, column, wc);
+            }
             break;
 
         case WALK_2G:
-            mfpt2d_gessel(bias, dist, width, wc);
+            mfpt2d_gessel(bias, dist, column, wc);
             break;
 
         case UNITEST:
