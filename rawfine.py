@@ -47,6 +47,7 @@ def dat_count(dat, n_=None):
 
     if n is None:
         print('Data file not found: %s' % dat)
+        DAT_CACHE.pop(dat, None)
         return n_
     if n != n_ and poss_corrupt:
         print("Possibly corrupt: %s (%d,%r)" % (dat,n,n_))
