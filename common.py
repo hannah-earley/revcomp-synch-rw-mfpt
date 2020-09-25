@@ -641,12 +641,12 @@ class SaferEval:
     @staticmethod
     def getSaferGlobals(builtins=None):
         """a selection of functions and modules that might be nice to use in, e.g., `batch.py --filter`, and which are RELATIVELY safe"""
-        import cmath, math, itertools, decimal, fractions, random, statistics, functools, operator, hashlib, hmac, secrets, time, json
+        import cmath, math, itertools, decimal, fractions, random, statistics, functools, operator, hashlib, hmac, time, json
         class jsonSafe:
             loads = lambda _,*a,**k: json.loads(*a,**k)
             dumps = lambda _,*a,**k: json.dumps(*a,**k)
 
-        globs = {'cmath': cmath, 'math': math, 'itertools': itertools, 'decimal': decimal, 'fractions': fractions, 'random': random, 'statistics': statistics, 'functools': functools, 'operator': operator, 'hashlib': hashlib, 'hmac': hmac, 'secrets': secrets, 'time': time, 'json': jsonSafe}
+        globs = {'cmath': cmath, 'math': math, 'itertools': itertools, 'decimal': decimal, 'fractions': fractions, 'random': random, 'statistics': statistics, 'functools': functools, 'operator': operator, 'hashlib': hashlib, 'hmac': hmac, 'time': time, 'json': jsonSafe}
         for m in 'acos acosh asin asinh atan atan2 atanh ceil copysign cos cosh degrees dist erf erfc exp expm1 fabs factorial floor fmod frexp fsum gamma gcd hypot isclose isfinite isinf isnan isqrt ldexp lgamma log log1p log10 log2 modf pow radians remainder sin sinh sqrt tan tanh trunc prod perm comb pi e tau inf nan'.split():
             globs[m] = getattr(math, m)
         for m in 'tee accumulate combinations combinations_with_replacement cycle dropwhile takewhile islice starmap chain compress filterfalse count zip_longest permutations product repeat groupby'.split():
