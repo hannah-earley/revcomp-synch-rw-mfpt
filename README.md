@@ -38,23 +38,23 @@ This repository comes with a number of tools.
     - job descriptions are .job files in JSON format in the `./queue/` directory. (Possibly nested) subdirectories can be used to create 'jobsets', and the batch tools can be restricted to these
         - job descriptions will crucially define a target which describes how long to run `./walk` for, either giving the total number of desired outputs or giving the target precision (possibly with bounds on the number of outputs)
         - example description:
-            ```json
+            ```js
             {
                 "options": ["-b", "0.01", "-d", "5", ...], // -2v implicit
                 "target": {
                     "skip": 2, // number of 'burn-in' outputs (optional)
 
                     // either... total count
-                    "count": 30 // number of real outputs to generate
+                    "count": 30, // number of real outputs to generate
 
                     // or...     precision
-                    "chunk": 10 // number of outputs to generate at a time
-                    "min": 20 // minimum number of outputs (optional)
-                    "max": 150 // maximum number of outputs (optional)
-                    "prec": 0.01 // target standard error
+                    "chunk": 10, // number of outputs to generate at a time
+                    "min": 20, // minimum number of outputs (optional)
+                    "max": 150, // maximum number of outputs (optional)
+                    "prec": 0.01, // target standard error
                 },
                 "requirements": {
-                    "cpu": 4 // don't run on computers with fewer than 4 cpus (optional)
+                    "cpu": 4, // don't run on computers with fewer than 4 cpus (optional)
                 }
             }
             ```

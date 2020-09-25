@@ -585,6 +585,24 @@ class Index:
         self.args = args
         self.experiments = []
 
+    def is_visible(self, item):
+        if self.args.filter is None:
+            return True
+
+        params, expt = item
+        mfpt, err = expt.mfpt()
+        return bool(common.SaferEval(self.args.filter, {
+            'params': params,
+            'simulation': params.simulation,
+            'bias': common.FuzzyFloat(params.bias),
+            'width': params.width,
+            'distance': params.distance,
+
+            'expt': expt,
+            'mfpt': mfpt,
+            'stderr': err
+        }))
+
     def find(self, params1, create=True):
         for i, (params2, _) in enumerate(self.experiments):
             if params1 == params2:
@@ -607,8 +625,21 @@ class Index:
     def __repr__(self):
         return repr(self.experiments)
 
-    def __iter__(self):
+    def all(self):
         return iter(self.experiments)
+
+    def __iter__(self):
+        return filter(self.is_visible, self.experiments)
+
+    def ordered(self):
+        def ordering(item):
+            params, _ = item
+            return (params.simulation,
+                    1/params.bias,
+                    params.width,
+                    params.distance)
+        return sorted(self, key=ordering)
+
 
 @common.run_once(error=False, warn=False)
 def generate_index(args):
@@ -658,7 +689,7 @@ def generate_index(args):
 
     with common.timer(4):
         warnings = False
-        for p,xs in index:
+        for p,xs in index.all():
             try:
                 xs.resolve()
             except Warning as w:
@@ -685,7 +716,7 @@ def indexed_handler(f):
 
 @indexed_handler
 def handler_index(args, index):
-    for params, expt in index:
+    for params, expt in index.ordered():
         print(params, '::')
         for jobn,job in expt:
             print('  ',jobn)
@@ -694,18 +725,11 @@ def handler_index(args, index):
 
 @indexed_handler
 def handler_mfpt(args, index):
-    def ordering(item):
-        params, _ = item
-        return (params.simulation,
-                1/params.bias,
-                params.width,
-                params.distance)
-
     if args.gnuplot:
         print('## sim-type bias width')
         print('# distance mfpt stderr')
         key = None
-        for params, expt in sorted(index, key=ordering):
+        for params, expt in index.ordered():
             key2 = (params.simulation, params.bias, params.width)
             mfpt, err = expt.mfpt()
             if key != key2:
@@ -714,12 +738,12 @@ def handler_mfpt(args, index):
             print(params.distance, mfpt, err)
 
     else:
-        for params, expt in sorted(index, key=ordering):
+        for params, expt in index.ordered():
             print(params, '::', expt.mfpt())
 
 @indexed_handler
 def handler_hist(args, index):
-    for params, expt in index:
+    for params, expt in index.ordered():
         mtimes = expt.mtimes()
         if mtimes['distr'] and mtimes['hist']:
             if mtimes['hist'] > mtimes['distr']:
@@ -790,6 +814,8 @@ if __name__ == '__main__':
         help="don't place an initial hold on experiments consisting of single jobs")
     parser.add_argument('--replan', action='store_true',
         help='scrap old experiment plans and reindex')
+    parser.add_argument('--filter', type=str, default=None,
+        help='A boolean python expression that indicates whether or not to include each experiment. Available variables include params, simulation, bias, width, distance, expt, mfpt, stderr. Available functions include most python builtins, those from math and itertools. Available modules include cmath, decimal, fractions, random, statistics, functools.')
 
 
 
@@ -832,8 +858,7 @@ if __name__ == '__main__':
 
     parser_plot = parser.add_command('plot',
                 help='Generate MFPT plots.',
-                description='',
-                epilog='RANGE: Can be a comma delimited list, a hyphenated range, or a mix, e.g. "1,3,6"; "5-9"; "1,3-10,4"; etc. If none or "-", then all matching parameters will be selected.')
+                description='')
     parser_plot.add_argument('-T', '--mfpt', action='store_true',
                 help='Generate raw mfpt/distance plot')
     parser_plot.add_argument('-R', '--residue', action='store_true',
@@ -842,12 +867,6 @@ if __name__ == '__main__':
                 help='Coefficient for unpenalised MFPT used to compute residues.')
     parser_plot.add_argument('-s', '--series', choices="bdw",
                 help='Superimpose the specified data series on each plot.')
-    parser_plot.add_argument('-b', '--biases', metavar='RANGE', nargs='?',
-                help='Which bias(es) to plot.')
-    parser_plot.add_argument('-d', '--distances', metavar='RANGE', nargs='?',
-                help='Which distance(s) to plot.')
-    parser_plot.add_argument('-w', '--widths', metavar='RANGE', nargs='?',
-                help='Which width(s) to plot.')
     parser_plot.add_argument('-f', '--format', choices=['pgf','png','eps','gui'], default='gui')
     parser_plot.handler(handler_plot)
 
