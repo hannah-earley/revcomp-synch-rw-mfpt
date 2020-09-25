@@ -19,6 +19,9 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
+import sys
+error = lambda *a,**k: print(*a, file=sys.stderr, **k)
+
 COMMENT_LINE = '#'
 
 EXTS = {
@@ -454,9 +457,9 @@ class Experiment:
 
             except (json.decoder.JSONDecodeError, FileNotFoundError, KeyError) as e:
                 if not isinstance(e, FileNotFoundError):
-                    print("Error encountered when loading experiment plan %s:" % name)
-                    print("   " + str(e))
-                    print("   ... replanning ...")
+                    error("Error encountered when loading experiment plan %s:" % name)
+                    error("   " + str(e))
+                    error("   ... replanning ...")
 
                 # construct initial plan
                 plan = {
@@ -628,7 +631,7 @@ def generate_index(args):
     with common.timer(2):
         warnings = False
         for jobn,job in jobs.items():
-            print('.', end='', flush=True)
+            error('.', end='', flush=True)
             with common.timer((3,jobn)):
                 try:
                     with common.timer((3,jobn,'overrides')):
@@ -638,19 +641,19 @@ def generate_index(args):
                     with common.timer((3,jobn,'params')):
                         params = job.get_parameters()
                 except Warning as w:
-                    print(w)
+                    error(w)
                     warnings = True
                     continue
                 index[params].add(job)
-        print('')
+        error('')
 
         if warnings:
-            print("\n*** Please fix the above warnings before continuing")
-            print("* For inconsistent outp/log, manually edit relevant files to resolve inconsistencies or use override*")
-            print("* For missing outp files, use rawfine.py cautiously to reconstruct")
-            print("* For missing log files, first touch the log file, then override* the relevant warnings.")
-            print("* For uninferred parameters, you may have an empty log file - add params to the log file...")
-            print("** .override files: see README.md")
+            error("\n*** Please fix the above warnings before continuing")
+            error("* For inconsistent outp/log, manually edit relevant files to resolve inconsistencies or use override*")
+            error("* For missing outp files, use rawfine.py cautiously to reconstruct")
+            error("* For missing log files, first touch the log file, then override* the relevant warnings.")
+            error("* For uninferred parameters, you may have an empty log file - add params to the log file...")
+            error("** .override files: see README.md")
             return False
 
     with common.timer(4):
@@ -659,14 +662,14 @@ def generate_index(args):
             try:
                 xs.resolve()
             except Warning as w:
-                print(w)
+                error(w)
                 warnings = True
                 continue
 
         if warnings:
-            print("\n*** Please fix the above warnings before continuing")
-            print("* Staged plans need manual review before use;")
-            print("  if the plan looks right, remove the staged key")
+            error("\n*** Please fix the above warnings before continuing")
+            error("* Staged plans need manual review before use;")
+            error("  if the plan looks right, remove the staged key")
             return False
 
     return index
@@ -691,8 +694,28 @@ def handler_index(args, index):
 
 @indexed_handler
 def handler_mfpt(args, index):
-    for params, expt in index:
-        print(params, '::', expt.mfpt())
+    def ordering(item):
+        params, _ = item
+        return (params.simulation,
+                1/params.bias,
+                params.width,
+                params.distance)
+
+    if args.gnuplot:
+        print('## sim-type bias width')
+        print('# distance mfpt stderr')
+        key = None
+        for params, expt in sorted(index, key=ordering):
+            key2 = (params.simulation, params.bias, params.width)
+            mfpt, err = expt.mfpt()
+            if key != key2:
+                print('\n\n# %s %r %d' % key2)
+            key = key2
+            print(params.distance, mfpt, err)
+
+    else:
+        for params, expt in sorted(index, key=ordering):
+            print(params, '::', expt.mfpt())
 
 @indexed_handler
 def handler_hist(args, index):
@@ -778,6 +801,8 @@ if __name__ == '__main__':
 
 
     parser_mfpt = parser.add_command('mfpt', help='Report MFPTs')
+    parser_mfpt.add_argument('-g', '--gnuplot', action='store_true',
+                help='Use gnuplot data format')
     parser_mfpt.handler(handler_mfpt)
 
 
