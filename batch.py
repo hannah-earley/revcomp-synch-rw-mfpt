@@ -18,7 +18,12 @@ import email.message
 from functools import wraps
 import signal
 
-import config
+try:
+    import config
+except ImportError:
+    print("Couldn't load configuration. Have you remembered to copy "
+          "config.template.py into config.py?", file=sys.stderr)
+    sys.exit(1)
 import common
 
 try:
