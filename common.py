@@ -614,3 +614,48 @@ class HumanTime:
         #     human += '%f' % interval
 
         return human.strip()
+
+class FuzzyFloat(float):
+    def __eq__(self, other):
+        return math.isclose(self, other)
+
+class SaferEval:
+    """Of course there is no way to make eval() safe; what we are trying to do is just limit the ability of a user of `batch.py --filter` from shooting themselves in the foot whilst allowing them to do reasonably complicated maths and logic. If the user is particularly determined, then they would probably find it easier to just code directly..."""
+
+    def __init__(self):
+        self.builtins = self.getSaferBuiltins()
+        self.globals_ = self.getSaferGlobals(self.builtins)
+
+    def __call__(self, stmt, locals_={}, globals_={}):
+        globals_ = {**self.globals_, **globals_}
+        return eval(stmt, globals_, locals_)
+
+    @staticmethod
+    def getSaferBuiltins(allowed='abs all any ascii bin bool bytearray bytes callable chr classmethod complex dict dir divmod enumerate filter float format frozenset getattr hasattr hash help hex id input int isinstance issubclass iter len list locals map max min next object oct ord pow print property range repr reversed round set slice sorted staticmethod str sum tuple zip'):
+        saferBuiltins = {}
+        builtins = globals()['__builtins__']
+        for bi in allowed.split():
+            saferBuiltins[bi] = builtins[bi]
+        return saferBuiltins
+
+    @staticmethod
+    def getSaferGlobals(builtins=None):
+        """a selection of functions and modules that might be nice to use in, e.g., `batch.py --filter`, and which are RELATIVELY safe"""
+        import cmath, math, itertools, decimal, fractions, random, statistics, functools, operator, hashlib, hmac, secrets, time, json
+        class jsonSafe:
+            loads = lambda _,*a,**k: json.loads(*a,**k)
+            dumps = lambda _,*a,**k: json.dumps(*a,**k)
+
+        globs = {'cmath': cmath, 'math': math, 'itertools': itertools, 'decimal': decimal, 'fractions': fractions, 'random': random, 'statistics': statistics, 'functools': functools, 'operator': operator, 'hashlib': hashlib, 'hmac': hmac, 'secrets': secrets, 'time': time, 'json': jsonSafe}
+        for m in 'acos acosh asin asinh atan atan2 atanh ceil copysign cos cosh degrees dist erf erfc exp expm1 fabs factorial floor fmod frexp fsum gamma gcd hypot isclose isfinite isinf isnan isqrt ldexp lgamma log log1p log10 log2 modf pow radians remainder sin sinh sqrt tan tanh trunc prod perm comb pi e tau inf nan'.split():
+            globs[m] = getattr(math, m)
+        for m in 'tee accumulate combinations combinations_with_replacement cycle dropwhile takewhile islice starmap chain compress filterfalse count zip_longest permutations product repeat groupby'.split():
+            globs[m] = getattr(itertools, m)
+
+        if builtins is None:
+            builtins = SaferEval.getSaferBuiltins()
+        globs['__builtins__'] = builtins
+
+        return globs
+
+SaferEval = SaferEval()
