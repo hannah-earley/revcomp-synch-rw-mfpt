@@ -554,3 +554,63 @@ def timer(name="task"):
         print("> timed %s...%r" % (name, end-start))
     else:
         yield
+
+class HumanTime:
+    units_ = [('d',86400),('h',3600),('m',60),('s',1),('ms',1e-3),('us',1e-6),('ns',1e-9)]
+    units = dict(units_)
+
+    @classmethod
+    def fromUnit(cls, num, unit, places=-1):
+        if places > 0:
+            num *= 0.1 ** places
+        if not unit:
+            return num
+        try:
+            return num * cls.units[unit.strip()]
+        except KeyError:
+            raise ValueError("Unknown time unit %r" % unit)
+
+    @classmethod
+    def fromHuman(cls, human):
+        interval = 0
+        unit = 's'
+        num = 0
+        places = -1
+
+        for c in human:
+            if c.isnumeric():
+                if unit:
+                    interval += cls.fromUnit(num, unit, places)
+                    unit = ''
+                    places = -1
+                    num = 0
+                num = 10*num + int(c)
+                if places >= 0:
+                    places += 1
+            elif c == '.':
+                if places >= 0:
+                    raise ValueError("Unexpected decimal point")
+                places = 0
+            else:
+                unit += c
+        interval += cls.fromUnit(num, unit, places)
+        return interval
+
+    @classmethod
+    def toHuman(cls, interval):
+        human = ''
+        if interval < 0:
+            human = '-'
+            interval = -interval
+
+        for unit, incr in cls.units_:
+            qty, interval = divmod(interval, incr)
+            if qty:
+                human += '%d%s ' % (qty, unit)
+            if not interval:
+                break
+
+        # if interval:
+        #     human += '%f' % interval
+
+        return human.strip()
