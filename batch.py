@@ -146,7 +146,7 @@ def handler_enq(args):
         print("%s:" % jset)
         handler_enq1(qdir, jset, tmpl)
 
-def get_stats_(jsdir, base):
+def get_stats_(jsdir, base, colour=False):
     sep = '  '
     activen = 0
     actp = ""
@@ -173,7 +173,7 @@ def get_stats_(jsdir, base):
                 continue
 
             jobj = Job(job, jobp)
-            active, stat = jobj.get_status()
+            active, stat = jobj.get_status(colour)
             line = jobn + ' :: ' + stat + "\n"
             outp += sep*(lvl+1) + line
             outputn += 1
@@ -189,18 +189,18 @@ def get_stats_(jsdir, base):
 
     return activen, actp, outputn, outp
 
-def get_stats(args):
+def get_stats(args, colour=False):
     qdir = args.q
     sets = args.jobset
     if not sets:
-        return get_stats_(qdir, 'queue')
+        return get_stats_(qdir, 'queue', colour)
     else:
         activen = 0
         actp = ""
         outputn = 0
         outp = ""
         for set_ in sets:
-            actn_, actp_, outn_, outp_ = get_stats_(os.path.join(qdir, set_), set_)
+            actn_, actp_, outn_, outp_ = get_stats_(os.path.join(qdir, set_), set_, colour)
             activen += actn_
             actp += actp_
             outputn += outn_
@@ -219,7 +219,7 @@ def handler_stat(args):
         assert int_ >= 60, "Refusing to email more frequently than minutely!"
 
     while True:
-        activen, actp, outputn, outp = get_stats(args)
+        activen, actp, outputn, outp = get_stats(args, eml is None)
         stats = "# active jobs: %d\n%s\n" % (activen, actp)
         stats += "# all jobs: %d\n%s" % (outputn, outp)
 
@@ -491,9 +491,13 @@ class Job:
         except FileExistsError:
             pass
 
-    def get_status(self):
+    def get_status(self, colour=False):
+        cf = lambda s,c: s
+        if colour:
+            cf = lambda s,c: "\033[3%dm%s\033[0m" % (c,s)
+
         active = False
-        status = "QUEUED"
+        status = cf('QUEUED', 3)
         cached = ""
         try:
             with open(self.path_stat) as f:
@@ -504,9 +508,9 @@ class Job:
         try:
             with self.lock():
                 if cached:
-                    status = "HALTED"
+                    status = cf("HALTED", 2)
         except Job.LockedOut:
-            status = "ACTIVE"
+            status = cf("ACTIVE", 6)
             active = True
 
         return active, '[%s] %s' % (status, cached)
