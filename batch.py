@@ -215,6 +215,9 @@ def handler_stat(args):
     if eml is False:
         eml = config.email.recipient
 
+    if eml is not None:
+        assert int_ >= 60, "Refusing to email more frequently than minutely!"
+
     while True:
         activen, actp, outputn, outp = get_stats(args)
         stats = "# active jobs: %d\n%s\n" % (activen, actp)
@@ -609,7 +612,7 @@ if __name__ == '__main__':
     parser_stat = parser.add_command('status', aliases=['stat'],
                     help='Generate status reports.',
                     description='Generate status reports.')
-    parser_stat.add_argument('-n', '--interval', default=None, type=float,
+    parser_stat.add_argument('-n', '--interval', default=None, type=common.HumanTime.fromHuman,
                     help="repeat at interval")
     parser_stat.add_argument('-e', '--email', default=None, type=str,
                     nargs='?', const=False,
