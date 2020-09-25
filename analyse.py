@@ -815,7 +815,7 @@ if __name__ == '__main__':
     parser.add_argument('--replan', action='store_true',
         help='scrap old experiment plans and reindex')
     parser.add_argument('--filter', type=str, default=None,
-        help='A boolean python expression that indicates whether or not to include each experiment. Available variables include params, simulation, bias, width, distance, expt, mfpt, stderr.')
+        help='A boolean python expression that indicates whether or not to include each experiment. Available variables include params, simulation, bias, width, distance, expt, mfpt, stderr. Available functions include most python builtins, those from math and itertools. Available modules include cmath, decimal, fractions, random, statistics, functools.')
 
 
 
