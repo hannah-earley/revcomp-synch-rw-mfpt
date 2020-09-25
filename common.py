@@ -648,9 +648,13 @@ class SaferEval:
 
         globs = {'cmath': cmath, 'math': math, 'itertools': itertools, 'decimal': decimal, 'fractions': fractions, 'random': random, 'statistics': statistics, 'functools': functools, 'operator': operator, 'hashlib': hashlib, 'hmac': hmac, 'time': time, 'json': jsonSafe}
         for m in 'acos acosh asin asinh atan atan2 atanh ceil copysign cos cosh degrees dist erf erfc exp expm1 fabs factorial floor fmod frexp fsum gamma gcd hypot isclose isfinite isinf isnan isqrt ldexp lgamma log log1p log10 log2 modf pow radians remainder sin sinh sqrt tan tanh trunc prod perm comb pi e tau inf nan'.split():
-            globs[m] = getattr(math, m)
+            f = getattr(math, m, None)
+            if f is not None:
+                globs[m] = f
         for m in 'tee accumulate combinations combinations_with_replacement cycle dropwhile takewhile islice starmap chain compress filterfalse count zip_longest permutations product repeat groupby'.split():
-            globs[m] = getattr(itertools, m)
+            f = getattr(itertools, m, None)
+            if f is not None:
+                globs[m] = f
 
         if builtins is None:
             builtins = SaferEval.getSaferBuiltins()
