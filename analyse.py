@@ -685,6 +685,7 @@ def generate_index(args):
             error("* For missing log files, first touch the log file, then override* the relevant warnings.")
             error("* For uninferred parameters, you may have an empty log file - add params to the log file...")
             error("** .override files: see README.md")
+            exit(1)
             return False
 
     with common.timer(4):
@@ -701,6 +702,7 @@ def generate_index(args):
             error("\n*** Please fix the above warnings before continuing")
             error("* Staged plans need manual review before use;")
             error("  if the plan looks right, remove the staged key")
+            exit(1)
             return False
 
     return index
