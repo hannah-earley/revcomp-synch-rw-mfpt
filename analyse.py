@@ -56,6 +56,8 @@ walk_args = argparse.ArgumentParser()
 walk_args.add_argument('-1', dest='sim', action='store_const', const='1d')
 walk_args.add_argument('-2', dest='sim', action='store_const', const='2d')
 walk_args.add_argument('-g', dest='sim', action='store_const', const='2g')
+walk_args.add_argument('-C', dest='shape', action='store_const', const='cusp', default='flat')
+walk_args.add_argument('-R', dest='shape', action='store_const', const='refl')
 walk_args.add_argument('-b', dest='bias', type=float, default=0)
 walk_args.add_argument('-d', dest='dist', type=int, default=1)
 walk_args.add_argument('-w', dest='width', type=int, default=1)
@@ -68,21 +70,23 @@ def walk_parse(args):
     return known
 
 class Parameters:
-    def __init__(self, sim, bias=0, dist=1, width=1, col=None):
+    def __init__(self, sim, shape=None, bias=0, dist=1, width=1, col=None):
         self.simulation = sim
+        self.shape = shape
         self.bias = float(bias)
         self.distance = int(dist)
         self.column = self.width = None
         if width is not None:
             self.width = int(width)
-        if col is not None:
+        if col is not None and int(col) >= 0:
             self.column = int(col)
 
     def __repr__(self):
-        return repr((self.simulation, self.bias, self.distance, self.width, self.column))
+        return repr((self.simulation, self.shape, self.bias, self.distance, self.width, self.column))
 
     def __str__(self):
         sim = self.simulation
+        shape = self.shape
         bias = self.bias
         dist = self.distance
         width = self.width
@@ -91,7 +95,9 @@ class Parameters:
         if sim == '1d':
             return '%s-%r-%d' % (sim, bias, dist)
         elif sim == '2d':
-            return '%s-%r-%d-%d' % (sim, bias, width, dist)
+            if column is not None:
+                return '%s_%s-%r-%d-%d-%d' % (sim, shape, bias, width, dist, column)
+            return '%s_%s-%r-%d-%d' % (sim, shape, bias, width, dist)
         elif sim == '2g':
             return '%s-%r-%d-%d' % (sim, bias, column, dist)
 
@@ -99,6 +105,8 @@ class Parameters:
 
     def __eq__(self, other):
         if self.simulation != other.simulation:
+            return False
+        if self.shape != other.shape:
             return False
 
         if cmp_float(self.bias, other.bias, TOLERANCE['bias'], True) != 0:
@@ -108,7 +116,7 @@ class Parameters:
 
         if self.simulation == '2d' and self.width != other.width:
             return False
-        elif self.simulation == '2g' and self.column != other.column:
+        if self.column != other.column:
             return False
 
         return True
@@ -123,7 +131,8 @@ class Parameters:
 
         sim = outp['sim']
         if sim:
-            return Parameters(sim, outp['bias'],
+            return Parameters(sim, outp['shape'],
+                                   outp['bias'],
                                    outp['dist'],
                                    outp['width'],
                                    outp['col'])
@@ -141,7 +150,8 @@ class Parameters:
         args = walk_parse(cmd)
         sim = args.sim
         if sim:
-            return Parameters(sim, args.bias,
+            return Parameters(sim, args.shape,
+                                   args.bias,
                                    args.dist,
                                    args.width,
                                    args.column)
@@ -149,20 +159,25 @@ class Parameters:
 
     @staticmethod
     def from_name(pure_name):
+        shape = col = None
         try:
             sim, bias, *rest = pure_name.split('-')
         except ValueError:
             return
 
         if sim == '1d':
-            dist, *_ = rest
-            return Parameters(sim, bias, dist)
+            dist, *rest = rest
+            return Parameters(sim, shape, bias, dist)
         elif sim == '2d':
-            width, dist, *_ = rest
-            return Parameters(sim, bias, dist, width)
+            if '_' in sim:
+                sim, shape = sim.split('_')
+            width, dist, *rest = rest
+            if rest:
+                col, *rest = rest
+            return Parameters(sim, shape, bias, dist, width, col)
         elif sim == '2g':
-            col, dist, *_ = rest
-            return Parameters(sim, bias, dist, None, col)
+            col, dist, *rest = rest
+            return Parameters(sim, shape, bias, dist, None, col)
 
 class Datum(py3_cmp):
     def __init__(self, mean, stderr, n):
@@ -612,11 +627,14 @@ class Index:
             'linear': params.simulation == "1d",
             'simplex2': params.simulation == "2d",
             'gessel': params.simulation == "2g",
+            'shape': params.shape,
+            'flat': params.shape == "flat",
+            'cusp': params.shape == "cusp",
+            'reflective': params.shape == "refl",
             'bias': common.FuzzyFloat(params.bias),
             'width': params.width,
             'column': params.column,
             'distance': params.distance,
-
             'expt': expt,
             'mfpt': mfpt,
             'stderr': err
@@ -654,6 +672,7 @@ class Index:
         def ordering(item):
             params, _ = item
             return (params.simulation,
+                    params.shape,
                     1/params.bias,
                     params.width,
                     params.column,
@@ -751,14 +770,20 @@ def handler_mfpt(args, index):
         print('# distance mfpt stderr')
         key = None
         for params, expt in index.ordered():
-            key2 = (params.simulation, params.bias, params.width, params.column)
+            key2 = (params.simulation, params.shape, params.bias, params.width, params.column)
             mfpt, err = expt.mfpt()
             if key != key2:
                 print('\n\n# ', end='')
                 if params.simulation == '1d':
                     print('1d bias=%r' % params.bias)
                 elif params.simulation == '2d':
-                    print('2d bias=%r width=%d' % (params.bias, params.width))
+                    print('2d ', end='')
+                    if params.shape is not None:
+                        print('shape=%s ' % params.shape, end='')
+                    print('bias=%r width=%d ' % (params.bias, params.width), end='')
+                    if params.column is not None:
+                        print('cols=%d' % params.column, end='')
+                    print()
                 elif params.simulation == '2g':
                     print('2g bias=%r col=%d' % (params.bias, params.column))
                 else:
