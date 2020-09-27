@@ -55,9 +55,11 @@ def handler_common(args):
 walk_args = argparse.ArgumentParser()
 walk_args.add_argument('-1', dest='sim', action='store_const', const='1d')
 walk_args.add_argument('-2', dest='sim', action='store_const', const='2d')
+walk_args.add_argument('-g', dest='sim', action='store_const', const='2g')
 walk_args.add_argument('-b', dest='bias', type=float, default=0)
 walk_args.add_argument('-d', dest='dist', type=int, default=1)
 walk_args.add_argument('-w', dest='width', type=int, default=1)
+walk_args.add_argument('-c', dest='col', type=int, default=None)
 walk_args.add_argument('-v', dest='verbose', action='store_true')
 def walk_parse(args):
     if isinstance(args, str):
@@ -66,27 +68,32 @@ def walk_parse(args):
     return known
 
 class Parameters:
-    def __init__(self, sim, bias=0, dist=1, width=1):
+    def __init__(self, sim, bias=0, dist=1, width=1, col=None):
         self.simulation = sim
         self.bias = float(bias)
         self.distance = int(dist)
-        self.width = None
+        self.column = self.width = None
         if width is not None:
             self.width = int(width)
+        if column is not None:
+            self.column = int(col)
 
     def __repr__(self):
-        return repr((self.simulation, self.bias, self.distance, self.width))
+        return repr((self.simulation, self.bias, self.distance, self.width, self.column))
 
     def __str__(self):
         sim = self.simulation
         bias = self.bias
         dist = self.distance
         width = self.width
+        column = self.column
 
         if sim == '1d':
             return '%s-%r-%d' % (sim, bias, dist)
         elif sim == '2d':
             return '%s-%r-%d-%d' % (sim, bias, width, dist)
+        elif sim == '2g':
+            return '%s-%r-%d-%d' % (sim, bias, column, dist)
 
         raise Warning('Parameters.__str__: cannot convert simulation type "%s" to a path name...' % sim)
 
@@ -100,6 +107,8 @@ class Parameters:
             return False
 
         if self.simulation == '2d' and self.width != other.width:
+            return False
+        elif self.simulation == '2g' and self.column != other.column:
             return False
 
         return True
@@ -116,7 +125,8 @@ class Parameters:
         if sim:
             return Parameters(sim, outp['bias'],
                                    outp['dist'],
-                                   outp['width'])
+                                   outp['width'],
+                                   outp['col'])
 
     @staticmethod
     def from_dat(dat):
@@ -133,7 +143,8 @@ class Parameters:
         if sim:
             return Parameters(sim, args.bias,
                                    args.dist,
-                                   args.width)
+                                   args.width,
+                                   args.column)
 
 
     @staticmethod
@@ -149,6 +160,9 @@ class Parameters:
         elif sim == '2d':
             width, dist, *_ = rest
             return Parameters(sim, bias, dist, width)
+        elif sim == '2g':
+            col, dist, *_ = rest
+            return Parameters(sim, bias, dist, None, col)
 
 class Datum(py3_cmp):
     def __init__(self, mean, stderr, n):
@@ -573,10 +587,11 @@ class Index:
     - bias
     - distance
     - [width]
+    - [column]
 
     Cannot use simple dictionary because:
     - bias is floating
-    - width is irrelevant for 1d, ignore
+    - width, column are irrelevant for 1d, ignore
 
     To address, we use a simple association list...
     """
@@ -596,6 +611,7 @@ class Index:
             'simulation': params.simulation,
             'bias': common.FuzzyFloat(params.bias),
             'width': params.width,
+            'column': params.column,
             'distance': params.distance,
 
             'expt': expt,
@@ -637,6 +653,7 @@ class Index:
             return (params.simulation,
                     1/params.bias,
                     params.width,
+                    params.column,
                     params.distance)
         return sorted(self, key=ordering)
 
@@ -728,14 +745,21 @@ def handler_index(args, index):
 @indexed_handler
 def handler_mfpt(args, index):
     if args.gnuplot:
-        print('## sim-type bias width')
         print('# distance mfpt stderr')
         key = None
         for params, expt in index.ordered():
-            key2 = (params.simulation, params.bias, params.width)
+            key2 = (params.simulation, params.bias, params.width, params.column)
             mfpt, err = expt.mfpt()
             if key != key2:
-                print('\n\n# %s %r %d' % key2)
+                print('\n\n# ', end='')
+                if params.simulation == '1d':
+                    print('1d bias=%r' % params.bias)
+                elif params.simulation == '2d':
+                    print('2d bias=%r width=%d' % (params.bias, params.width))
+                elif params.simulation == '2g':
+                    print('2g bias=%r col=%d' % (params.bias, params.column))
+                else:
+                    print(repr(key))
             key = key2
             print(params.distance, mfpt, err)
 
@@ -817,7 +841,7 @@ if __name__ == '__main__':
     parser.add_argument('--replan', action='store_true',
         help='scrap old experiment plans and reindex')
     parser.add_argument('--filter', type=str, default=None,
-        help='A boolean python expression that indicates whether or not to include each experiment. Available variables include params, simulation, bias, width, distance, expt, mfpt, stderr. Available functions include most python builtins, those from math and itertools. Available modules include cmath, decimal, fractions, random, statistics, functools.')
+        help='A boolean python expression that indicates whether or not to include each experiment. Available variables include params, simulation, bias, width, column, distance, expt, mfpt, stderr. Available functions include most python builtins, those from math and itertools. Available modules include cmath, decimal, fractions, random, statistics, functools.')
 
 
 
