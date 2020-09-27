@@ -75,7 +75,7 @@ class Parameters:
         self.column = self.width = None
         if width is not None:
             self.width = int(width)
-        if column is not None:
+        if col is not None:
             self.column = int(col)
 
     def __repr__(self):
