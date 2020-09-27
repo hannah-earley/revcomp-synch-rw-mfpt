@@ -609,6 +609,9 @@ class Index:
         return bool(common.SaferEval(self.args.filter, {
             'params': params,
             'simulation': params.simulation,
+            'linear': params.simulation == "1d",
+            'simplex2': params.simulation == "2d",
+            'gessel': params.simulation == "2g",
             'bias': common.FuzzyFloat(params.bias),
             'width': params.width,
             'column': params.column,
