@@ -19,6 +19,9 @@ sims = {"MFPT - 1D Walk": '1d'
        ,"MFPT - 2D Walk (Gessel)": '2g'
        ,"Unit Tests": 'tu'
        ,"Test Bed...": 'tb'}
+shapes = {"Flat": 'flat',
+          "Cusp": 'cusp',
+          "Reflective": 'refl'}
 
 DAT_CACHE = {}
 DAT_EOF = '# eof'
@@ -63,7 +66,7 @@ def parse_duration(s):
 
 def read_log(fin, dat=None, meta=True):
     outp = {
-        'sim':None,
+        'sim':None, 'shape': None,
         'bias':None, 'dist':None, 'width':None, 'col':None,
         'n':None, 'm':None, 's':None, 'its':None,
         'mean':None, 'var':None, 'err':None,
@@ -94,6 +97,8 @@ def read_log(fin, dat=None, meta=True):
                         outp['dist'] = int(val)
                     if key == 'Constriction Width':
                         outp['width'] = int(val)
+                    if key == 'Distribution Shape':
+                        outp['shape'] = shapes[val]
                     if key == 'Initial Column':
                         outp['col'] = int(val)
                     if key == 'Walker Count':

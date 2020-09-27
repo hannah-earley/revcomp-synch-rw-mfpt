@@ -8,7 +8,7 @@ disp_path=0
 unif=0
 padw=0
 padd=0
-col=-1
+col=
 
 usage () {
     echo "Usage: $0 [OPTIONS]"
@@ -144,7 +144,12 @@ dist=$(pad "0" "$padd" "$dist")
 if [ "${type}" = "1" ]; then
     file="1d-${bias}-${dist}${suff}"
 elif [ "${type}" = "2" ]; then
-    file="2d-${bias}-${widt}-${dist}${suff}"
+    file="2d_${shape}-${bias}-${widt}-${dist}"
+    if [ -z "$col" ]; then
+        file="${file}${suff}"
+    else
+        file="${file}-${col}${suff}"
+    fi
 elif [ "${type}" = "g" ]; then
     file="2g-${bias}-${col}-${dist}${suff}"
 else
