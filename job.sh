@@ -8,6 +8,7 @@ disp_path=0
 unif=0
 padw=0
 padd=0
+col=-1
 
 usage () {
     echo "Usage: $0 [OPTIONS]"
@@ -33,7 +34,7 @@ usage () {
 
 argv=(-v)
 options () {
-    while getopts ":b:d:w:S:A:B:hP12" o; do
+    while getopts ":b:c:d:w:S:A:B:hP12g" o; do
         case "${o}" in
             b)
                 bias="${OPTARG}"
@@ -46,6 +47,10 @@ options () {
             w)
                 widt="${OPTARG}"
                 argv+=(-w "$widt")
+                ;;
+            c)
+                col="${OPTARG}"
+                argv+=(-c "$col")
                 ;;
             S)
                 suff="-${OPTARG}"
@@ -62,6 +67,9 @@ options () {
                 ;;
             2)
                 type=2
+                ;;
+            g)
+                type=g
                 ;;
             h)
                 usage 1>&2
@@ -137,6 +145,8 @@ if [ "${type}" = "1" ]; then
     file="1d-${bias}-${dist}${suff}"
 elif [ "${type}" = "2" ]; then
     file="2d-${bias}-${widt}-${dist}${suff}"
+elif [ "${type}" = "g" ]; then
+    file="2g-${bias}-${col}-${dist}${suff}"
 else
     echo "Unknown type ${type}"
     exit 1

@@ -16,6 +16,7 @@ unit_durs = {'y':365*86400,'d':86400,'h':3600,'m':60,'s':1,
              'fs':1e-15,'as':1e-18,'zs':1e-21,'ys':1e-24}
 sims = {"MFPT - 1D Walk": '1d'
        ,"MFPT - 2D Walk (Constrained/Quadrant)": '2d'
+       ,"MFPT - 2D Walk (Gessel)": '2g'
        ,"Unit Tests": 'tu'
        ,"Test Bed...": 'tb'}
 
@@ -63,7 +64,7 @@ def parse_duration(s):
 def read_log(fin, dat=None, meta=True):
     outp = {
         'sim':None,
-        'bias':None, 'dist':None, 'width':None,
+        'bias':None, 'dist':None, 'width':None, 'col':None,
         'n':None, 'm':None, 's':None, 'its':None,
         'mean':None, 'var':None, 'err':None,
         'dur':None, 'prog':None,
@@ -93,6 +94,8 @@ def read_log(fin, dat=None, meta=True):
                         outp['dist'] = int(val)
                     if key == 'Constriction Width':
                         outp['width'] = int(val)
+                    if key == 'Initial Column':
+                        outp['col'] = int(val)
                     if key == 'Walker Count':
                         outp['n'] = int(val)
                     if key == 'Measurement Count':
