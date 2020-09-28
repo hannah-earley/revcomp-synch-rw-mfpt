@@ -307,7 +307,7 @@ class Job:
         with common.timer('refine'):
             csv_dat = []
             with open(outp, 'r') as fh:
-                for line in fh:
+                for lineno, line in enumerate(fh):
                     line = line.strip()
                     if not line:
                         continue
@@ -315,14 +315,12 @@ class Job:
                         continue
 
                     mean, err, its = line.split(',')
-                    mean = float(mean)
-                    err = float(err)
-                    its = int(its)
+                    datum = Datum(float(mean), float(err), int(its))
+                    datum._line_no = lineno
                     fin = math.isfinite
-                    if not (fin(mean) and fin(err)):
+                    if not (fin(datum.mean) and fin(datum.stderr)):
                         continue
-
-                    csv_dat.append(Datum(mean, err, its))
+                    csv_dat.append(datum)
 
         # lcs = common.LCS(csv_dat, raw_dat)
         with common.timer('lcs'):
@@ -340,19 +338,23 @@ class Job:
                     pass
                 fix += str(x) + "\n"
 
-            warn = "check_outp: Job %s:\n" % self.name
+            warn = "\n"
+            warn += "check_outp: Job %s:\n" % self.name
             warn += "  Inconsistent outp(%d, %s) log(%d, %s) outputs!\n" % (
                         len(csv_dat),EXTS['outp'],len(raw_dat),EXTS['log'])
 
             overs = set()
             notcsv = 0
             warn2 = "    in outp but not log (*):\n"
+            warn2+= "     #indx(line): mean,stderr,n\n"
             for d,k,x in diff:
                 if d < 0:
                     if k in self.overrides['outp']:
                         overs.add(k)
                     else:
-                        warn2 += "      %4d: %s\n" % (k,x)
+                        ln = getattr(x, '_line_no', None)
+                        ln = '????' if ln is None else '%4d' % ln
+                        warn2 += "      %4d(%s): %s\n" % (k,ln,x)
                         notcsv += 1
             if notcsv:
                 warn2 += "    * may indicate incorrect weighting...\n"
@@ -370,8 +372,7 @@ class Job:
             if notlog:
                 warn += warn2
 
-            warn += "  N.B. Record indices may not match line numbers\n"
-            warn += "  A candidate fix has been written to %s\n" % EXTS['outp_fix'] 
+            warn += "  A candidate fix has been written to %s" % EXTS['outp_fix'] 
 
             if notcsv or notlog or excess:
                 with open(self.path_for('outp_fix', True), 'w') as f:
