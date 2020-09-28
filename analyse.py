@@ -13,7 +13,6 @@ import rawfine
 import common
 import distribution
 from common import cmp, py3_cmp, cmp_float
-common.SHOW_TIMERS = False
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -121,8 +120,22 @@ class Parameters:
 
         return True
 
-    @staticmethod
-    def from_log(fin, dat=None):
+    @classmethod
+    def from_dict(cls, d):
+        return cls(d['simulation'], d['shape'], d['bias'],
+                   d['distance'], d['width'], d['column'])
+    def to_dict(self):
+        return {
+            'simulation': self.simulation,
+            'shape': self.shape,
+            'bias': self.bias,
+            'distance': self.distance,
+            'width': self.width,
+            'column': self.column
+        }
+
+    @classmethod
+    def from_log(cls, fin, dat=None):
         outp = None
         for outp in rawfine.read_log(fin, dat, meta=False):
             pass
@@ -130,35 +143,27 @@ class Parameters:
             return
 
         sim = outp['sim']
-        if sim:
-            return Parameters(sim, outp['shape'],
-                                   outp['bias'],
-                                   outp['dist'],
-                                   outp['width'],
-                                   outp['col'])
+        if outp['sim']:
+            return cls(outp['sim'], outp['shape'], outp['bias'],
+                       outp['dist'], outp['width'], outp['col'])
 
-    @staticmethod
-    def from_dat(dat):
+    @classmethod
+    def from_dat(cls, dat):
         with open(dat, 'r') as fh:
             for line in fh:
                 assert line.startswith(COMMENT_LINE)
                 cmd = line[1:].strip()
-                return Parameters.from_args(cmd)
+                return cls.from_args(cmd)
 
-    @staticmethod
-    def from_args(cmd):
+    @classmethod
+    def from_args(cls, cmd):
         args = walk_parse(cmd)
-        sim = args.sim
-        if sim:
-            return Parameters(sim, args.shape,
-                                   args.bias,
-                                   args.dist,
-                                   args.width,
-                                   args.column)
+        if args.sim:
+            return cls(args.sim, args.shape, args.bias,
+                       args.dist, args.width, args.column)
 
-
-    @staticmethod
-    def from_name(pure_name):
+    @classmethod
+    def from_name(cls, pure_name):
         shape = col = None
         try:
             sim, bias, *rest = pure_name.split('-')
@@ -167,17 +172,17 @@ class Parameters:
 
         if sim == '1d':
             dist, *rest = rest
-            return Parameters(sim, shape, bias, dist)
+            return cls(sim, shape, bias, dist)
         elif sim == '2d':
             if '_' in sim:
                 sim, shape = sim.split('_')
             width, dist, *rest = rest
             if rest:
                 col, *rest = rest
-            return Parameters(sim, shape, bias, dist, width, col)
+            return cls(sim, shape, bias, dist, width, col)
         elif sim == '2g':
             col, dist, *rest = rest
-            return Parameters(sim, shape, bias, dist, None, col)
+            return cls(sim, shape, bias, dist, None, col)
 
 class Datum(py3_cmp):
     def __init__(self, mean, stderr, n):
@@ -262,6 +267,9 @@ class Job:
                 warn += "  %s\n" % over
             raise Warning(warn)
 
+    def set_parameters(self, params):
+        self._params = params
+
     def get_parameters(self):
         def method_log():
             dat = self.path_for('persist')
@@ -280,8 +288,7 @@ class Job:
 
         if self._params is None:
             self._params = False
-            methods = [method_log, method_dat, method_name]
-            for method in methods:
+            for method in [method_log, method_dat, method_name]:
                 ret = method()
                 if ret:
                     self._params = ret
@@ -684,7 +691,18 @@ class Index:
 @common.run_once(error=False, warn=False)
 def generate_index(args):
     jobdir = args.jobdir
+    cachef = None
     jobs = {}
+    cache = {}
+
+    if args.cache:
+        cachef = os.path.join(jobdir, args.cache)
+        try:
+            if not args.replan:
+                with open(cachef, 'r') as f:
+                    cache = json.load(f)
+        except FileNotFoundError:
+            pass
 
     with common.timer(1):
         for root,_,files in os.walk(jobdir):
@@ -701,22 +719,34 @@ def generate_index(args):
 
     with common.timer(2):
         warnings = False
+        prog_bar = False
         for jobn,job in jobs.items():
-            error('.', end='', flush=True)
-            with common.timer((3,jobn)):
-                try:
-                    with common.timer((3,jobn,'overrides')):
-                        job.get_overrides()
-                    with common.timer((3,jobn,'outp')):
-                        job.check_outp()
-                    with common.timer((3,jobn,'params')):
-                        params = job.get_parameters()
-                except Warning as w:
-                    error(w)
-                    warnings = True
-                    continue
-                index[params].add(job)
-        error('')
+            if jobn in cache:
+                params = Parameters.from_dict(cache[jobn])
+                job.set_parameters(params)
+            else:
+                error('.', end='', flush=True)
+                prog_bar = True
+                with common.timer((3,jobn)):
+                    try:
+                        with common.timer((3,jobn,'overrides')):
+                            job.get_overrides()
+                        with common.timer((3,jobn,'outp')):
+                            job.check_outp()
+                        with common.timer((3,jobn,'params')):
+                            params = job.get_parameters()
+                            cache[jobn] = params.to_dict()
+
+                    except Warning as w:
+                        error(w)
+                        warnings = True
+                        continue
+            index[params].add(job)
+        if prog_bar: error('')
+
+        if cachef:
+            with open(cachef, 'w') as f:
+                json.dump(cache, f, sort_keys=True, indent=4)
 
         if warnings:
             error("\n*** Please fix the above warnings before continuing")
@@ -863,6 +893,7 @@ def handler_plot(args, index):
 if __name__ == '__main__':
     parser = common.CommandParser(description='Suite of analysis tools for data generated by other tools in this repository.')
     parser.add_argument('-j', '--jobdir', default='./jobs', help='data directory')
+    parser.add_argument('-c', '--cache', default=None, nargs='?', const='_cache.json', help='cache index parameters to speed up indexing')
     parser.add_argument('--skip', default=2,
         help='default number of outputs to skip on each job (when indexing initially)')
     parser.add_argument('--no-stage-single', dest='stage_single', action='store_false',

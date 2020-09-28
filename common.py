@@ -3,12 +3,14 @@ import argparse
 import shutil
 import textwrap
 from functools import wraps
+import os
 import sys
 import math
 from contextlib import contextmanager
 import time
 
-SHOW_TIMERS = False
+SHOW_TIMERS = os.getenv('DEBUG') == '1'
+print(SHOW_TIMERS, file=sys.stderr)
 
 def run_once(message=None, error=True, warn=True):
     def wrapper(f):
@@ -547,11 +549,11 @@ def timer(name="task"):
     if SHOW_TIMERS:
         if not isinstance(name, str):
             name = repr(name)
-        print("> timing %s..." % (name,))
+        print("> timing %s..." % (name,), file=sys.stderr)
         start = time.time()
         yield
         end = time.time()
-        print("> timed %s...%r" % (name, end-start))
+        print("> timed %s...%r" % (name, end-start), file=sys.stderr)
     else:
         yield
 
