@@ -10,7 +10,6 @@ from contextlib import contextmanager
 import time
 
 SHOW_TIMERS = os.getenv('DEBUG') == '1'
-print(SHOW_TIMERS, file=sys.stderr)
 
 def run_once(message=None, error=True, warn=True):
     def wrapper(f):
