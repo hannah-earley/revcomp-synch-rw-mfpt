@@ -127,7 +127,7 @@ def read_log(fin, dat=None, meta=True):
                     var_ = float(matches.group(3))
 
                     fin = math.isfinite
-                    if not (fin(mean_) and fin(err_) and fin(var_)):
+                    if fin(mean_) and not (fin(err_) and fin(var_)):
                         if outq:
                             yield outq
                         outq = None
@@ -190,8 +190,11 @@ def read_log(fin, dat=None, meta=True):
 
 def log2csv(outps):
     for result in outps:
-        mean = 1 / result['mean']
-        err = result['err'] * mean * mean
+        if math.isfinite(result['mean']):
+            mean = 1 / result['mean']
+            err = result['err'] * mean * mean
+        else:
+            mean = err = 0
         its = result['its']
         if its is None:
             its = result['n'] * result['m'] * result['s']
