@@ -7,7 +7,7 @@ import math
 
 open_mode = 'x'
 its_re = re.compile(r'^its: +([0-9]+)$')
-mean_re = re.compile(r'^mean:([0-9.e+-]+|inf) \(±([0-9.e+-]+|nan)\) var:([0-9.e+-]+|nan)$')
+mean_re = re.compile(r'^mean:([0-9.e+-]+|inf) \(±([0-9.e+-]+|-?nan)\) var:([0-9.e+-]+|-?nan)$')
 syst_re = re.compile(r'^(CPU|Wall): +(.*) \((.*)\)$')
 real_re = re.compile(r'^Real: (.*) - (.*)$')
 real_fmt = '%H:%M:%S %d/%m/%y'
@@ -120,7 +120,7 @@ def read_log(fin, dat=None, meta=True):
                     matches = mean_re.match(line)
                     if not matches:
                         print(fin, line)
-                        raise ValueError
+                        raise ValueError((fin, line))
 
                     mean_ = float(matches.group(1))
                     err_ = float(matches.group(2))
